@@ -8,7 +8,9 @@
   let settings = null;
   let currentPage = "dashboard";
   let currentTerm = 1;
-  const loaded = { lessons: false, activities: false, compliance: false };
+  const loaded = { announcements: false, lessons: false, activities: false, compliance: false };
+  const announcementById = new Map();
+  const announcementHeartState = new Map();
 
   document.addEventListener("DOMContentLoaded", boot);
 
@@ -25,9 +27,15 @@
 
     if (!demo) {
       try {
-        const restored = await G10DataService.restoreStudentSession();
-        if (restored) {
-          profile = restored;
+        const restored = await G10DataService.restoreAccountSession();
+
+        if (restored?.role === "admin") {
+          window.location.replace("admin.html");
+          return;
+        }
+
+        if (restored?.role === "student" && restored.profile) {
+          profile = restored.profile;
           await enterApp();
         }
       } catch (err) {
@@ -41,6 +49,8 @@
     $("#demoBtn").addEventListener("click", () => loginDemo());
     $("#togglePassword").addEventListener("click", togglePassword);
     $("#logoutBtn").addEventListener("click", logout);
+    $("#passwordChangeForm").addEventListener("submit", handlePasswordChange);
+    $("#passwordChangeLogoutBtn").addEventListener("click", logoutFromPasswordChange);
 
     $$(".nav-btn, .mobile-nav-btn, .goto-page").forEach(btn => {
       btn.addEventListener("click", () => navigate(btn.dataset.page));
@@ -53,6 +63,7 @@
       loaded.compliance = false;
       $("#currentTermText").textContent = `Term ${currentTerm}`;
       $("#complianceTerm").textContent = `Term ${currentTerm}`;
+      await refreshDashboardMaterialCards(true);
       await loadCurrentPage();
     });
 
@@ -69,6 +80,12 @@
       el.addEventListener("click", closeViewer);
     });
 
+    document.addEventListener("click", async e => {
+      const heartButton = e.target.closest(".announcement-heart-btn");
+      if (!heartButton) return;
+      await handleAnnouncementHeart(heartButton);
+    });
+
     document.addEventListener("keydown", e => {
       if (e.key === "Escape" && !$("#viewerModal").classList.contains("hidden")) closeViewer();
     });
@@ -76,7 +93,7 @@
 
   async function handleLogin(event) {
     event.preventDefault();
-    const id = $("#studentId").value.trim();
+    const identifier = $("#studentId").value.trim();
     const password = $("#password").value;
     const button = $("#loginBtn");
 
@@ -84,7 +101,14 @@
     setButtonLoading(button, true, "SIGNING IN…");
 
     try {
-      profile = await G10DataService.signInStudent(id, password);
+      const account = await G10DataService.signInAccount(identifier, password);
+
+      if (account.role === "admin") {
+        window.location.replace("admin.html");
+        return;
+      }
+
+      profile = account.profile;
       await enterApp();
     } catch (err) {
       setError(cleanAuthError(err));
@@ -101,7 +125,12 @@
   }
 
   async function enterApp() {
-    settings = await G10DataService.getSettings();
+    if (requiresPasswordChange()) {
+      showPasswordChangeModal();
+      return;
+    }
+
+    settings = await G10DataService.getSettings(true);
     currentTerm = Number(settings.currentTerm || G10_CONFIG.app.defaultTerm || 1);
     $("#termSelect").value = String(currentTerm);
 
@@ -110,7 +139,89 @@
 
     $("#loginView").classList.add("hidden");
     $("#appView").classList.remove("hidden");
+
+    await Promise.all([
+      refreshDashboardMaterialCards(true),
+      refreshDashboardAnnouncement(true)
+    ]);
     navigate("dashboard");
+  }
+
+
+  function requiresPasswordChange() {
+    // New accounts explicitly store true. Legacy imported student profiles
+    // without the field are also treated as first-login accounts once.
+    return !!profile && profile.mustChangePassword !== false;
+  }
+
+  function showPasswordChangeModal() {
+    $("#loginView").classList.add("hidden");
+    $("#appView").classList.add("hidden");
+    $("#passwordChangeModal").classList.remove("hidden");
+    $("#passwordChangeError").textContent = "";
+    $("#newStudentPasswordChange").value = "";
+    $("#confirmStudentPasswordChange").value = "";
+    document.body.classList.add("modal-open");
+
+    setTimeout(() => {
+      $("#newStudentPasswordChange").focus();
+    }, 50);
+  }
+
+  function hidePasswordChangeModal() {
+    $("#passwordChangeModal").classList.add("hidden");
+    document.body.classList.remove("modal-open");
+  }
+
+  async function handlePasswordChange(event) {
+    event.preventDefault();
+
+    const newPassword = $("#newStudentPasswordChange").value;
+    const confirmPassword = $("#confirmStudentPasswordChange").value;
+    const button = $("#passwordChangeBtn");
+    const error = $("#passwordChangeError");
+
+    error.textContent = "";
+
+    if (newPassword.length < 6) {
+      error.textContent = "Your new password must contain at least 6 characters.";
+      return;
+    }
+
+    if (newPassword === "123456") {
+      error.textContent = "123456 is only a temporary password. Please create your own password.";
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      error.textContent = "The passwords do not match.";
+      return;
+    }
+
+    setButtonLoading(button, true, "SAVING…");
+
+    try {
+      profile = await G10DataService.changeStudentPassword(newPassword);
+      hidePasswordChangeModal();
+      await enterApp();
+    } catch (err) {
+      const code = err && err.code ? String(err.code) : "";
+
+      if (code.includes("requires-recent-login")) {
+        error.textContent = "For security, sign out and sign in again using your current password, then create your new password.";
+      } else if (code.includes("weak-password")) {
+        error.textContent = "Please create a stronger password with at least 6 characters.";
+      } else {
+        error.textContent = (err && err.message) || "Unable to change password.";
+      }
+    } finally {
+      setButtonLoading(button, false, "SAVE NEW PASSWORD");
+    }
+  }
+
+  async function logoutFromPasswordChange() {
+    hidePasswordChangeModal();
+    await logout();
   }
 
   function renderProfile() {
@@ -127,10 +238,241 @@
   function renderSettings() {
     $("#schoolYearText").textContent = settings.schoolYear || G10_CONFIG.app.schoolYear;
     $("#currentTermText").textContent = `Term ${currentTerm}`;
-    $("#latestLessonText").textContent = settings.latestLessonTitle || "Open Lessons to view";
-    $("#latestActivityText").textContent = settings.latestActivityTitle || "Open Activities to view";
-    $("#announcementText").textContent = settings.announcement || "Welcome to the Grade 10 Arduino learning hub.";
+
+    // Dashboard cards are verified against actual student-facing feeds.
+    setDashboardMaterialCard("lesson", "");
+    setDashboardMaterialCard("activity", "");
+    renderDashboardAnnouncement(null);
   }
+
+  function setDashboardMaterialCard(kind, title) {
+    const isLesson = kind === "lesson";
+    const text = $(`#latest${isLesson ? "Lesson" : "Activity"}Text`);
+    if (!text) return;
+
+    const cleanTitle = String(title || "").trim();
+    text.textContent = cleanTitle;
+
+    const card = text.closest(".info-card");
+    if (card) card.classList.toggle("hidden", !cleanTitle);
+  }
+
+  function latestDashboardItem(rows) {
+    if (!Array.isArray(rows) || !rows.length) return null;
+
+    // Lesson/activity order is teacher-controlled. The highest display order
+    // in the selected term is treated as the current/latest item.
+    return rows
+      .slice()
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+      .at(-1) || null;
+  }
+
+  async function refreshDashboardMaterialCards(force = false) {
+    if (!profile) return;
+
+    // Hide first so stale titles never remain visible while checking.
+    setDashboardMaterialCard("lesson", "");
+    setDashboardMaterialCard("activity", "");
+
+    const [lessonResult, activityResult] = await Promise.allSettled([
+      G10DataService.getLessons(currentTerm, profile.section, force),
+      G10DataService.getActivities(currentTerm, profile.section, force)
+    ]);
+
+    if (lessonResult.status === "fulfilled") {
+      const latest = latestDashboardItem(lessonResult.value);
+      setDashboardMaterialCard("lesson", latest?.title || "");
+    }
+
+    if (activityResult.status === "fulfilled") {
+      const latest = latestDashboardItem(activityResult.value);
+      setDashboardMaterialCard("activity", latest?.title || "");
+    }
+  }
+
+
+
+  function announcementDateValue(value) {
+    if (!value) return null;
+    if (typeof value.toDate === "function") return value.toDate();
+    if (typeof value.seconds === "number") return new Date(value.seconds * 1000);
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  async function hydrateAnnouncementHearts(posts) {
+    const rows = Array.isArray(posts) ? posts : [];
+    rows.forEach(post => announcementById.set(post.id, post));
+
+    const states = await G10DataService.getAnnouncementHeartStates(
+      rows.map(post => post.id)
+    );
+
+    Object.entries(states).forEach(([id, hearted]) => {
+      announcementHeartState.set(id, Boolean(hearted));
+    });
+  }
+
+  function renderDashboardAnnouncement(post) {
+    const card = $("#dashboardAnnouncementCard");
+    if (!card) return;
+
+    if (!post) {
+      card.classList.add("hidden");
+      $("#dashboardAnnouncementTitle").textContent = "";
+      $("#dashboardAnnouncementMessage").textContent = "";
+      $("#dashboardAnnouncementMeta").textContent = "";
+      $("#dashboardAnnouncementHeart").removeAttribute("data-announcement-id");
+      return;
+    }
+
+    announcementById.set(post.id, post);
+
+    $("#dashboardAnnouncementTitle").textContent =
+      post.title || "Announcement";
+
+    $("#dashboardAnnouncementMessage").textContent =
+      post.message || "";
+
+    const publishDate = announcementDateValue(post.publishAt);
+    $("#dashboardAnnouncementMeta").textContent = publishDate
+      ? `Published ${formatDateTime(publishDate)}`
+      : "Published";
+
+    const heart = $("#dashboardAnnouncementHeart");
+    heart.dataset.announcementId = post.id;
+    updateHeartButtons(post.id, announcementHeartState.get(post.id) === true);
+
+    card.classList.remove("hidden");
+  }
+
+  async function refreshDashboardAnnouncement(force = false) {
+    if (!profile) return;
+
+    renderDashboardAnnouncement(null);
+
+    try {
+      const rows = await G10DataService.getAnnouncements(
+        profile.section,
+        force
+      );
+
+      if (!rows.length) return;
+
+      const latest = rows[0];
+      await hydrateAnnouncementHearts([latest]);
+      renderDashboardAnnouncement(latest);
+    } catch (err) {
+      console.warn("Could not refresh dashboard announcement:", err);
+    }
+  }
+
+  function announcementPostHtml(post) {
+    const publishDate = announcementDateValue(post.publishAt);
+    const hearted = announcementHeartState.get(post.id) === true;
+
+    return `
+      <article class="announcement-post">
+        <div class="announcement-post-head">
+          <div>
+            <div class="card-kicker">ANNOUNCEMENT</div>
+            <h3>${escapeHtml(post.title || "Announcement")}</h3>
+          </div>
+          <span class="announcement-date">
+            ${escapeHtml(publishDate ? formatDateTime(publishDate) : "Published")}
+          </span>
+        </div>
+
+        <p class="announcement-post-message">${escapeHtml(post.message || "")}</p>
+
+        <div class="announcement-post-footer">
+          <small>${escapeHtml(post.createdByName || "ICT Teacher")}</small>
+          <button
+            class="announcement-heart-btn ${hearted ? "hearted" : ""}"
+            type="button"
+            data-announcement-id="${escapeAttr(post.id)}"
+            aria-pressed="${hearted ? "true" : "false"}">
+            <span class="heart-symbol">♥</span>
+            <span class="heart-label">${hearted ? "Hearted" : "Heart"}</span>
+          </button>
+        </div>
+      </article>
+    `;
+  }
+
+  async function loadAnnouncements(force = false) {
+    const target = $("#announcementsList");
+    target.innerHTML = `<div class="loading-line">Loading announcements…</div>`;
+
+    try {
+      const rows = await G10DataService.getAnnouncements(
+        profile.section,
+        force
+      );
+
+      loaded.announcements = true;
+
+      if (!rows.length) {
+        target.innerHTML = emptyState(
+          "No announcements yet",
+          "There are no published announcements for your section right now."
+        );
+        renderDashboardAnnouncement(null);
+        return;
+      }
+
+      await hydrateAnnouncementHearts(rows);
+
+      target.innerHTML = rows
+        .map(announcementPostHtml)
+        .join("");
+
+      renderDashboardAnnouncement(rows[0]);
+    } catch (err) {
+      target.innerHTML = errorState(err);
+    }
+  }
+
+  async function handleAnnouncementHeart(button) {
+    const announcementId = String(button.dataset.announcementId || "").trim();
+    const post = announcementById.get(announcementId);
+
+    if (!announcementId || !post || button.disabled) return;
+
+    button.disabled = true;
+
+    try {
+      const hearted = await G10DataService.toggleAnnouncementHeart(post);
+      announcementHeartState.set(announcementId, hearted);
+      updateHeartButtons(announcementId, hearted);
+    } catch (err) {
+      alert((err && err.message) || "Could not update your heart reaction.");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function updateHeartButtons(announcementId, hearted) {
+    $$(`.announcement-heart-btn[data-announcement-id="${cssEscape(announcementId)}"]`)
+      .forEach(button => {
+        button.classList.toggle("hearted", hearted);
+        button.setAttribute("aria-pressed", hearted ? "true" : "false");
+
+        const label = button.querySelector(".heart-label");
+        if (label) label.textContent = hearted ? "Hearted" : "Heart";
+      });
+  }
+
+  function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === "function") {
+      return window.CSS.escape(String(value || ""));
+    }
+
+    return String(value || "").replace(/["\\]/g, "\\$&");
+  }
+
 
   async function navigate(page) {
     if (!page) return;
@@ -145,6 +487,7 @@
 
     const titles = {
       dashboard: ["Student Portal", "Dashboard"],
+      announcements: ["Class Updates", "Announcements"],
       lessons: ["Learning Materials", "Lessons"],
       activities: ["Performance Tasks", "Activities"],
       compliance: ["Published Snapshot", "Compliance"]
@@ -158,6 +501,15 @@
   }
 
   async function loadCurrentPage(force = false) {
+    if (currentPage === "dashboard") {
+      await Promise.all([
+        refreshDashboardMaterialCards(force),
+        refreshDashboardAnnouncement(force)
+      ]);
+    }
+    if (currentPage === "announcements" && (!loaded.announcements || force)) {
+      await loadAnnouncements(force);
+    }
     if (currentPage === "lessons" && (!loaded.lessons || force)) await loadLessons();
     if (currentPage === "activities" && (!loaded.activities || force)) await loadActivities();
     if (currentPage === "compliance" && (!loaded.compliance || force)) await loadCompliance();
@@ -248,7 +600,7 @@
     target.innerHTML = `<div class="loading-line">Loading your published compliance record…</div>`;
 
     try {
-      const record = await G10DataService.getCompliance(profile.uid, currentTerm);
+      const record = await G10DataService.getCompliance(profile.studentId, currentTerm, true);
       loaded.compliance = true;
       $("#complianceTerm").textContent = `Term ${currentTerm}`;
       $("#complianceUpdated").textContent = record.lastUpdated
@@ -258,6 +610,7 @@
       const tasks = Array.isArray(record.tasks) ? record.tasks : [];
       if (!tasks.length) {
         $("#missingCount").textContent = "0";
+        $("#totalTaskCount").textContent = "0";
         $("#missingRequirementsCard").classList.remove("hidden");
         $("#missingHeading").textContent = "No requirements published yet";
         $("#missingBadge").textContent = "0";
@@ -270,12 +623,18 @@
       }
 
       const missingTasks = tasks.filter(isMissingTask);
-      $("#missingCount").textContent = String(missingTasks.length);
+      const storedMissing = Number(record?.summary?.missing);
+      const missingCount = Number.isFinite(storedMissing)
+        ? storedMissing
+        : missingTasks.length;
+
+      $("#missingCount").textContent = String(missingCount);
+      $("#totalTaskCount").textContent = String(tasks.length);
       $("#missingRequirementsCard").classList.remove("hidden");
-      $("#missingBadge").textContent = String(missingTasks.length);
+      $("#missingBadge").textContent = String(missingCount);
 
       if (missingTasks.length) {
-        $("#missingHeading").textContent = `${missingTasks.length} requirement${missingTasks.length === 1 ? "" : "s"} still need attention`;
+        $("#missingHeading").textContent = `${missingCount} requirement${missingCount === 1 ? "" : "s"} still need attention`;
         $("#missingRequirementsList").innerHTML = missingTasks.map(task => `
           <article class="missing-item">
             <div class="missing-item-icon">!</div>
@@ -295,17 +654,47 @@
       }
 
       target.innerHTML = tasks.map(task => {
-        const band = String(task.percentageBand || "neutral").toLowerCase();
-        const status = String(task.status || "pending");
-        const score = task.practicalExam && Number.isFinite(Number(task.score))
-          ? `<span class="score-pill">${escapeHtml(String(task.score))}/${escapeHtml(String(task.maxScore || ""))}</span>`
+        const missing = isMissingTask(task);
+        const percent = Number(task?.scorePercent);
+
+        // scorePercent is the source of truth for completed-task colors.
+        // percentageBand remains only as a backward-compatible fallback.
+        const band = missing
+          ? "black"
+          : (
+              Number.isFinite(percent)
+                ? complianceBandFromPercent(percent)
+                : String(task.percentageBand || "neutral").toLowerCase()
+            );
+
+        const status = missing ? "Missing" : "Completed";
+
+        const taskId = String(task?.taskId || "").toLowerCase();
+        const category = String(task?.category || "").toLowerCase();
+        const categoryLabel = String(task?.categoryLabel || "").toLowerCase();
+
+        const isTermAssessment =
+          category === "ta" ||
+          taskId.startsWith("ta") ||
+          categoryLabel.includes("term assessment");
+
+        const numericScore = Number(task?.score);
+        const numericMaxScore = Number(task?.maxScore);
+
+        const hasScore =
+          Number.isFinite(numericScore) &&
+          Number.isFinite(numericMaxScore) &&
+          numericMaxScore > 0;
+
+        const score = isTermAssessment && hasScore
+          ? `<span class="score-pill term-assessment-score">${escapeHtml(formatComplianceScore(numericScore))}/${escapeHtml(formatComplianceScore(numericMaxScore))}</span>`
           : "";
 
         return `
-          <article class="compliance-row">
+          <article class="compliance-row band-card-${escapeAttr(band)}">
             <div class="status-bar band-${escapeAttr(band)}"></div>
             <div class="compliance-task">
-              <small>${task.practicalExam ? "PRACTICAL EXAM" : "ACTIVITY"}</small>
+              <small>${escapeHtml(task.categoryLabel || "ACTIVITY")}</small>
               <strong>${escapeHtml(task.displayName || task.taskName || "Task")}</strong>
             </div>
             <div class="compliance-status">
@@ -320,6 +709,25 @@
     }
   }
 
+
+  function complianceBandFromPercent(percent) {
+    const value = Number(percent);
+
+    if (!Number.isFinite(value)) return "neutral";
+    if (value <= 40) return "red";
+    if (value <= 74) return "orange";
+    if (value <= 85) return "yellow";
+    if (value <= 90) return "lime";
+    return "green";
+  }
+
+  function formatComplianceScore(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "";
+    return Number.isInteger(number)
+      ? String(number)
+      : String(Math.round(number * 100) / 100);
+  }
 
   function isMissingTask(task) {
     if (task && task.missing === true) return true;
@@ -341,27 +749,14 @@
 
     if (missingStatuses.includes(status)) return true;
 
-    // Fallback for older snapshots that only stored a red band.
-    // If your real grading system uses red for a low-but-submitted score,
-    // set `missing: false` explicitly during sync to prevent it being listed here.
-    if (task && task.missing !== false &&
-        String(task.percentageBand || "").toLowerCase() === "red" &&
-        !Number.isFinite(Number(task.score))) {
-      return true;
-    }
-
     return false;
   }
 
   function missingReason(task) {
     if (task && task.missingReason) return String(task.missingReason);
-    const status = String((task && task.status) || "").trim().toLowerCase();
-
-    if (status === "absent") return "Marked absent / requirement not completed.";
-    if (status.includes("submit")) return "Submission is still missing.";
-    if (status.includes("incomplete") || status.includes("completion")) return "This requirement is not yet complete.";
-    return "This requirement still needs to be completed.";
+    return "No score recorded yet.";
   }
+
 
   function bindFileButtons() {
     $$(".view-file").forEach(btn => {
@@ -424,6 +819,7 @@
   }
 
   async function logout() {
+    hidePasswordChangeModal();
     await G10DataService.logout();
     profile = null;
     settings = null;
@@ -453,7 +849,7 @@
   function cleanAuthError(err) {
     const code = err && err.code ? String(err.code) : "";
     if (code.includes("wrong-password") || code.includes("invalid-credential") || code.includes("user-not-found")) {
-      return "Student ID or password is incorrect.";
+      return "Student ID/Admin Email or password is incorrect.";
     }
     if (code.includes("too-many-requests")) {
       return "Too many login attempts. Please try again later.";
@@ -489,8 +885,18 @@
   }
 
   function formatDateTime(value) {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
+    let d;
+
+    if (value && typeof value.toDate === "function") {
+      d = value.toDate();
+    } else if (value && typeof value.seconds === "number") {
+      d = new Date(value.seconds * 1000);
+    } else {
+      d = new Date(value);
+    }
+
+    if (Number.isNaN(d.getTime())) return String(value || "");
+
     return d.toLocaleString("en-PH", {
       month: "long",
       day: "numeric",

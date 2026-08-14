@@ -4,8 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#b20f1b">
-  <title>Grade 10 Arduino Hub</title>
+  <title>MCSian ICT 10 Portal</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MCSian ICT 10">
 
   <!--
     No npm. Firebase is loaded from Google's CDN.
@@ -19,6 +25,7 @@
   <script defer src="demo-data.js"></script>
   <script defer src="data-service.js"></script>
   <script defer src="app.js"></script>
+  <script defer src="pwa.js"></script>
 </head>
 <body>
   <noscript>
@@ -28,17 +35,20 @@
   <section id="loginView" class="login-shell">
     <div class="login-art">
       <div class="brand-mark" aria-hidden="true">
-        <span class="brand-board">UNO</span>
+        <img class="portal-brand-icon portal-brand-icon-large" src="icons/icon-192.png" alt="">
         <span class="brand-led brand-led-red"></span>
         <span class="brand-led brand-led-blue"></span>
       </div>
       <p class="eyebrow">ICT 10 • Arduino</p>
-      <h1>Grade 10<br>Arduino Hub</h1>
+      <h1 class="portal-login-title">
+        <span class="portal-login-title-line">
+          <span class="brand-mcsian">MCSian</span>
+          <span class="brand-ict10">ICT 10</span>
+        </span>
+        <span class="brand-portal-word">Portal</span>
+      </h1>
       <p class="login-lead">Lessons, activities, and compliance in one fast, responsive school web app.</p>
 
-      <div class="architecture-strip" aria-label="Application architecture">
-        <span>Firebase</span><b>→</b><span>Fast Data</span><b>•</b><span>Drive</span><b>→</b><span>Files</span>
-      </div>
     </div>
 
     <div class="login-panel">
@@ -47,14 +57,14 @@
           LOCAL DEMO MODE — Firebase is not required for this preview.
         </div>
 
-        <p class="eyebrow dark">Student Portal</p>
+        <p class="eyebrow dark">Account Login</p>
         <h2>Welcome back</h2>
-        <p class="muted">Use your Student ID and password.</p>
+        <p class="muted">Enter your Student ID or Admin Email and password.</p>
 
         <form id="loginForm" class="stack-form" autocomplete="on">
           <label>
-            <span>Student ID</span>
-            <input id="studentId" name="studentId" type="text" autocomplete="username" placeholder="Enter Student ID" required>
+            <span>Student ID or Admin Email</span>
+            <input id="studentId" name="studentId" type="text" autocomplete="username" placeholder="Student ID or Admin Email" required>
           </label>
           <label>
             <span>Password</span>
@@ -68,9 +78,9 @@
 
           <button id="loginBtn" class="primary-btn" type="submit">SIGN IN</button>
           <button id="demoBtn" class="secondary-btn hidden" type="button">OPEN LOCAL DEMO</button>
+          <button id="installAppBtn" class="secondary-btn install-app-btn hidden" type="button">INSTALL APP</button>
         </form>
 
-        <p class="login-footnote">Teacher/Admin? <a href="admin.html">Open Admin Panel</a></p>
       </div>
     </div>
   </section>
@@ -78,24 +88,28 @@
   <div id="appView" class="app-shell hidden">
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <div class="mini-board">UNO</div>
-        <div>
-          <strong>G10 Arduino</strong>
-          <small>Learning Hub</small>
+        <img class="portal-brand-icon" src="icons/icon-192.png" alt="">
+        <div class="sidebar-brand-copy">
+          <strong>
+            <span class="brand-mcsian">MCSian</span>
+            <span class="brand-ict10">ICT 10</span>
+          </strong>
+          <small>Portal</small>
         </div>
       </div>
 
       <nav class="side-nav" aria-label="Main navigation">
         <button class="nav-btn active" data-page="dashboard"><span>01</span> Dashboard</button>
-        <button class="nav-btn" data-page="lessons"><span>02</span> Lessons</button>
-        <button class="nav-btn" data-page="activities"><span>03</span> Activities</button>
-        <button class="nav-btn" data-page="compliance"><span>04</span> Compliance</button>
+        <button class="nav-btn" data-page="announcements"><span>02</span> Announcements</button>
+        <button class="nav-btn" data-page="lessons"><span>03</span> Lessons</button>
+        <button class="nav-btn" data-page="activities"><span>04</span> Activities</button>
+        <button class="nav-btn" data-page="compliance"><span>05</span> Compliance</button>
       </nav>
 
       <div class="sidebar-bottom">
         <div class="user-mini">
           <div class="avatar" id="avatarInitials">JD</div>
-          <div>
+          <div class="user-mini-copy">
             <strong id="sideStudentName">Student</strong>
             <small id="sideSection">Grade 10</small>
           </div>
@@ -153,31 +167,56 @@
           </article>
         </div>
 
-        <article class="announcement-card">
+        <article id="dashboardAnnouncementCard" class="announcement-card portal-announcement-preview hidden">
           <div class="announcement-mark">!</div>
-          <div>
-            <div class="card-kicker">CLASS ANNOUNCEMENT</div>
-            <h3 id="announcementText">Welcome to the Grade 10 Arduino learning hub.</h3>
+          <div class="announcement-preview-body">
+            <div class="card-kicker">LATEST ANNOUNCEMENT</div>
+            <h3 id="dashboardAnnouncementTitle"></h3>
+            <p id="dashboardAnnouncementMessage" class="announcement-preview-message"></p>
+            <small id="dashboardAnnouncementMeta" class="announcement-meta"></small>
+            <div class="announcement-actions">
+              <button id="dashboardAnnouncementHeart" class="announcement-heart-btn" type="button">
+                <span class="heart-symbol">♥</span>
+                <span class="heart-label">Heart</span>
+              </button>
+              <button class="text-link goto-page" data-page="announcements" type="button">View all announcements →</button>
+            </div>
           </div>
         </article>
 
         <div class="quick-grid">
-          <button class="quick-card goto-page" data-page="lessons">
+          <button class="quick-card goto-page" data-page="announcements">
             <span class="quick-no">01</span>
+            <strong>Announcements</strong>
+            <small>Class updates and reminders</small>
+          </button>
+          <button class="quick-card goto-page" data-page="lessons">
+            <span class="quick-no">02</span>
             <strong>Lessons</strong>
             <small>Load metadata only</small>
           </button>
           <button class="quick-card goto-page" data-page="activities">
-            <span class="quick-no">02</span>
+            <span class="quick-no">03</span>
             <strong>Activities</strong>
             <small>Files open on demand</small>
           </button>
           <button class="quick-card goto-page" data-page="compliance">
-            <span class="quick-no">03</span>
+            <span class="quick-no">04</span>
             <strong>Compliance</strong>
             <small>Your record only</small>
           </button>
         </div>
+      </section>
+
+      <section id="page-announcements" class="page">
+        <div class="section-toolbar">
+          <div>
+            <h3>Announcements</h3>
+            <p>Updates and reminders published for your section.</p>
+          </div>
+          <button class="refresh-btn" data-refresh="announcements">Refresh</button>
+        </div>
+        <div id="announcementsList" class="announcement-feed"></div>
       </section>
 
       <section id="page-lessons" class="page">
@@ -206,7 +245,6 @@
         <div class="section-toolbar">
           <div>
             <h3>Compliance Status</h3>
-            <p>Your published Firestore snapshot only — no Google Sheet request is made here.</p>
           </div>
           <button class="refresh-btn" data-refresh="compliance">Refresh</button>
         </div>
@@ -226,7 +264,28 @@
             <span class="card-kicker">MISSING</span>
             <strong id="missingCount">—</strong>
           </div>
+          <div class="summary-dot"></div>
+          <div>
+            <span class="card-kicker">TOTAL TASKS</span>
+            <strong id="totalTaskCount">—</strong>
+          </div>
         </article>
+
+
+        <section class="compliance-color-guide" aria-label="Compliance color guide">
+          <div class="compliance-color-guide-head">
+            <span class="card-kicker">COLOR GUIDE</span>
+            <strong>Score Legend by Percentage</strong>
+          </div>
+          <div class="compliance-color-guide-items">
+            <div class="color-guide-item guide-black"><span class="color-dot"></span><b>Black</b><small>Missing / No Score</small></div>
+            <div class="color-guide-item guide-red"><span class="color-dot"></span><b>Red</b><small>0–40%</small></div>
+            <div class="color-guide-item guide-orange"><span class="color-dot"></span><b>Orange</b><small>41–74%</small></div>
+            <div class="color-guide-item guide-yellow"><span class="color-dot"></span><b>Yellow</b><small>75–85%</small></div>
+            <div class="color-guide-item guide-lime"><span class="color-dot"></span><b>Lime</b><small>86–90%</small></div>
+            <div class="color-guide-item guide-green"><span class="color-dot"></span><b>Green</b><small>91–100%</small></div>
+          </div>
+        </section>
 
         <section id="missingRequirementsCard" class="missing-card hidden">
           <div class="missing-card-head">
@@ -252,10 +311,44 @@
 
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="mobile-nav-btn active" data-page="dashboard">Home</button>
+      <button class="mobile-nav-btn" data-page="announcements">Posts</button>
       <button class="mobile-nav-btn" data-page="lessons">Lessons</button>
       <button class="mobile-nav-btn" data-page="activities">Tasks</button>
       <button class="mobile-nav-btn" data-page="compliance">Status</button>
     </nav>
+  </div>
+
+
+  <div id="passwordChangeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="passwordChangeTitle">
+    <div class="modal-backdrop"></div>
+    <div class="password-change-dialog">
+      <div class="password-change-badge">FIRST LOGIN SECURITY</div>
+      <h2 id="passwordChangeTitle">Create Your Own Password</h2>
+      <p class="password-change-intro">
+        Your temporary password must be changed before you can open the student portal.
+      </p>
+
+      <form id="passwordChangeForm" class="stack-form" autocomplete="off">
+        <label>
+          <span>New Password</span>
+          <input id="newStudentPasswordChange" type="password" autocomplete="new-password" minlength="6" required placeholder="At least 6 characters">
+        </label>
+
+        <label>
+          <span>Confirm New Password</span>
+          <input id="confirmStudentPasswordChange" type="password" autocomplete="new-password" minlength="6" required placeholder="Type it again">
+        </label>
+
+        <p class="password-change-note">
+          Do not use <strong>123456</strong>. Keep your new password private and remember it.
+        </p>
+
+        <p id="passwordChangeError" class="form-error" role="alert"></p>
+
+        <button id="passwordChangeBtn" class="primary-btn" type="submit">SAVE NEW PASSWORD</button>
+        <button id="passwordChangeLogoutBtn" class="secondary-btn" type="button">SIGN OUT</button>
+      </form>
+    </div>
   </div>
 
   <div id="viewerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">

@@ -11,6 +11,13 @@
   let knownSections = [];
   let cachedStudentProfiles = [];
 
+  let complianceSettingsCache = null;
+  let activeComplianceTaskGroup = "ww";
+
+  let editingAnnouncementId = null;
+  let adminNotificationUnsubscribe = null;
+  let currentUnreadNotifications = [];
+
   document.addEventListener("DOMContentLoaded", boot);
 
   async function boot() {
@@ -26,14 +33,20 @@
     const handles = G10DataService.getFirebaseHandles();
     db = handles.db;
 
-    if (handles.auth && handles.auth.currentUser) {
-      try {
-        const snap = await db.collection("admins").doc(handles.auth.currentUser.uid).get();
-        if (snap.exists) {
-          admin = { uid: handles.auth.currentUser.uid, email: handles.auth.currentUser.email, ...snap.data() };
-          await enterAdmin();
-        }
-      } catch (_) {}
+    try {
+      const restored = await G10DataService.restoreAccountSession();
+
+      if (restored?.role === "admin" && restored.admin) {
+        admin = restored.admin;
+        await enterAdmin();
+        return;
+      }
+
+      if (restored?.role === "student") {
+        window.location.replace("index.html");
+      }
+    } catch (err) {
+      console.warn("Could not restore Admin session:", err);
     }
   }
 
@@ -48,13 +61,32 @@
     $("#settingsForm").addEventListener("submit", saveSettings);
     $("#lessonForm").addEventListener("submit", saveLesson);
     $("#activityForm").addEventListener("submit", saveActivity);
+    $("#announcementForm").addEventListener("submit", saveAnnouncement);
+    $("#cancelAnnouncementEditBtn").addEventListener("click", resetAnnouncementForm);
+    $("#refreshAnnouncementsAdmin").addEventListener("click", loadAdminAnnouncements);
+    $("#adminNotificationBtn").addEventListener("click", toggleAdminNotificationPanel);
+    $("#markNotificationsReadBtn").addEventListener("click", markAllAdminNotificationsRead);
+    $$("[data-close-hearts]").forEach(el => {
+      el.addEventListener("click", closeAdminHeartsModal);
+    });
     $("#studentForm").addEventListener("submit", createStudent);
     $("#bulkStudentForm").addEventListener("submit", previewBulkStudents);
     $("#bulkImportBtn").addEventListener("click", importBulkStudents);
     $("#newStudentSection").addEventListener("change", handleNewStudentSectionChange);
-    $("#syncSheetName").addEventListener("change", handleSyncSheetChange);
     $("#studentSectionFilter").addEventListener("change", renderStudentProfiles);
-    $("#syncPreviewForm").addEventListener("submit", previewSync);
+    $("#saveComplianceSettingsBtn").addEventListener("click", saveComplianceSettingsToFirebase);
+    $("#syncTerm").addEventListener("change", handleComplianceTermChange);
+    $("#complianceSelectAllBtn").addEventListener("click", () => setAllComplianceSectionsChecked(true));
+    $("#complianceClearAllBtn").addEventListener("click", () => setAllComplianceSectionsChecked(false));
+    $("#resetComplianceTaskNamesBtn").addEventListener("click", resetCurrentComplianceTaskGroup);
+    $$("[data-compliance-task-group]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        captureVisibleComplianceTaskNames();
+        activeComplianceTaskGroup = btn.dataset.complianceTaskGroup || "ww";
+        renderComplianceTaskGroup();
+      });
+    });
+    $("#previewComplianceBtn").addEventListener("click", previewSync);
     $("#publishSyncBtn").addEventListener("click", publishSync);
 
     $("#refreshLessonsAdmin").addEventListener("click", loadAdminLessons);
@@ -85,9 +117,16 @@
     $("#adminName").textContent = admin.name || admin.email || "Admin";
     await loadSettings();
     await loadSectionDirectory();
+    resetAnnouncementForm();
+    startAdminNotificationListener();
   }
 
   async function adminLogout() {
+    if (adminNotificationUnsubscribe) {
+      adminNotificationUnsubscribe();
+      adminNotificationUnsubscribe = null;
+    }
+
     await G10DataService.logout();
     admin = null;
     $("#adminApp").classList.add("hidden");
@@ -100,9 +139,11 @@
     $$(".admin-page").forEach(p => p.classList.remove("active"));
     $(`#admin-page-${page}`).classList.add("active");
 
+    if (page === "announcements") await loadAdminAnnouncements();
     if (page === "lessons") await loadAdminLessons();
     if (page === "activities") await loadAdminActivities();
     if (page === "students") await loadStudents();
+    if (page === "sync") await loadComplianceSetup();
   }
 
 
@@ -165,16 +206,10 @@
       if (previous !== "*" && knownSections.includes(previous)) filter.value = previous;
     }
 
-    // Compliance Sync: section names become suggested sheet names.
-    const syncSelect = $("#syncSheetName");
-    if (syncSelect) {
-      const previous = syncSelect.value;
-      syncSelect.innerHTML =
-        optionHtml("", "Select section") +
-        knownSections.map(section => optionHtml(section, section, previous === section)).join("") +
-        optionHtml("__custom__", "Other sheet name…", previous === "__custom__");
-    }
+    // Compliance section setup is rendered by loadComplianceSetup()
+    // using the same unique section directory from the student roster.
 
+    renderMultiSectionPicker("announcement", $("#announcementSectionsOptions"));
     renderMultiSectionPicker("lesson", $("#lessonSectionsOptions"));
     renderMultiSectionPicker("activity", $("#activitySectionsOptions"));
   }
@@ -262,26 +297,11 @@
     return normalizeSectionName(selected);
   }
 
-  function handleSyncSheetChange() {
-    const custom = $("#syncSheetName").value === "__custom__";
-    $("#syncSheetCustomWrap").classList.toggle("hidden", !custom);
-    $("#syncSheetCustom").required = custom;
-    if (!custom) $("#syncSheetCustom").value = "";
-  }
-
-  function getSyncSheetName() {
-    const selected = $("#syncSheetName").value;
-    return selected === "__custom__"
-      ? String($("#syncSheetCustom").value || "").trim()
-      : String(selected || "").trim();
-  }
-
   async function loadSettings() {
     const snap = await db.collection("settings").doc("main").get();
     const data = snap.exists ? snap.data() : {};
     $("#settingSchoolYear").value = data.schoolYear || G10_CONFIG.app.schoolYear || "2026-2027";
     $("#settingCurrentTerm").value = String(data.currentTerm || 1);
-    $("#settingAnnouncement").value = data.announcement || "";
   }
 
   async function saveSettings(e) {
@@ -292,7 +312,6 @@
       const data = {
         schoolYear: $("#settingSchoolYear").value.trim(),
         currentTerm: Number($("#settingCurrentTerm").value),
-        announcement: $("#settingAnnouncement").value.trim(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       await db.collection("settings").doc("main").set(data, { merge: true });
@@ -380,6 +399,637 @@
     return result.file;
   }
 
+
+
+  function announcementFeedTargets(allowedSections) {
+    const sections = Array.isArray(allowedSections) && allowedSections.length
+      ? allowedSections
+      : ["*"];
+
+    if (sections.includes("*")) return ["ALL_SECTIONS"];
+
+    return Array.from(new Set(
+      sections
+        .map(section => normalizeSectionName(section))
+        .filter(Boolean)
+    ));
+  }
+
+  async function syncAnnouncementFeeds(announcementId, payload) {
+    const cleanupTargets = ["ALL_SECTIONS", ...knownSections];
+    const cleanupBatch = db.batch();
+
+    cleanupTargets.forEach(sectionKey => {
+      cleanupBatch.delete(
+        db.collection("announcementFeeds")
+          .doc(sectionKey)
+          .collection("items")
+          .doc(announcementId)
+      );
+    });
+
+    await cleanupBatch.commit();
+
+    if (!payload || payload.published !== true) return;
+
+    const feedPayload = {
+      title: payload.title || "",
+      message: payload.message || "",
+      allowedSections: payload.allowedSections || ["*"],
+      published: true,
+      publishAt: payload.publishAt,
+      createdByName: payload.createdByName || "ICT Teacher",
+      sourceId: announcementId,
+      feedVersion: 1,
+      feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    const writeBatch = db.batch();
+
+    announcementFeedTargets(payload.allowedSections).forEach(sectionKey => {
+      writeBatch.set(
+        db.collection("announcementFeeds")
+          .doc(sectionKey)
+          .collection("items")
+          .doc(announcementId),
+        feedPayload
+      );
+    });
+
+    await writeBatch.commit();
+  }
+
+  function toLocalDateTimeInput(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    const pad = value => String(value).padStart(2, "0");
+
+    return [
+      d.getFullYear(),
+      "-",
+      pad(d.getMonth() + 1),
+      "-",
+      pad(d.getDate()),
+      "T",
+      pad(d.getHours()),
+      ":",
+      pad(d.getMinutes())
+    ].join("");
+  }
+
+  function announcementTimestampDate(value) {
+    if (!value) return null;
+    if (typeof value.toDate === "function") return value.toDate();
+    if (typeof value.seconds === "number") return new Date(value.seconds * 1000);
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function formatAdminDateTime(value) {
+    const date = announcementTimestampDate(value);
+    if (!date) return "No publish date";
+
+    return date.toLocaleString("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit"
+    });
+  }
+
+  function announcementAdminStatus(item) {
+    if (item.published !== true) {
+      return { label: "UNPUBLISHED", className: "unpublished" };
+    }
+
+    const publishDate = announcementTimestampDate(item.publishAt);
+    if (publishDate && publishDate.getTime() > Date.now()) {
+      return { label: "SCHEDULED", className: "scheduled" };
+    }
+
+    return { label: "PUBLISHED", className: "published" };
+  }
+
+  function resetAnnouncementForm() {
+    editingAnnouncementId = null;
+
+    const form = $("#announcementForm");
+    if (form) form.reset();
+
+    $("#announcementPublished").checked = true;
+    $("#announcementPublishAt").value = toLocalDateTimeInput(new Date());
+    $("#announcementFormHeading").textContent = "Create Announcement";
+    $("#announcementEditBadge").classList.add("hidden");
+    $("#cancelAnnouncementEditBtn").classList.add("hidden");
+    $("#saveAnnouncementBtn").textContent = "SAVE ANNOUNCEMENT";
+
+    renderMultiSectionPicker(
+      "announcement",
+      $("#announcementSectionsOptions")
+    );
+  }
+
+  function setSectionPickerValues(prefix, values) {
+    const requested = Array.isArray(values) && values.length
+      ? values
+      : ["*"];
+
+    const inputs = $$(`input[data-section-picker="${prefix}"]`);
+    const useAll = requested.includes("*");
+
+    inputs.forEach(input => {
+      input.checked = useAll
+        ? input.value === "*"
+        : requested.includes(input.value);
+    });
+
+    updateSectionPickerSummary(prefix);
+  }
+
+  async function saveAnnouncement(e) {
+    e.preventDefault();
+
+    const btn = $("#saveAnnouncementBtn");
+    setBusy(btn, true, editingAnnouncementId ? "UPDATING…" : "SAVING…");
+    setStatus("#announcementStatus", "Saving announcement…");
+
+    try {
+      const dateInput = $("#announcementPublishAt").value;
+      const publishDate = dateInput ? new Date(dateInput) : new Date();
+
+      if (Number.isNaN(publishDate.getTime())) {
+        throw new Error("Please enter a valid publish date and time.");
+      }
+
+      const payload = {
+        title: $("#announcementTitle").value.trim(),
+        message: $("#announcementMessage").value.trim(),
+        allowedSections: getSelectedSections("announcement"),
+        published: $("#announcementPublished").checked,
+        publishAt: firebase.firestore.Timestamp.fromDate(publishDate),
+        createdByName: admin.name || admin.email || "ICT Teacher",
+        createdByEmail: admin.email || "",
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+
+      if (!payload.title || !payload.message) {
+        throw new Error("Announcement title and message are required.");
+      }
+
+      let ref;
+
+      if (editingAnnouncementId) {
+        ref = db.collection("announcements").doc(editingAnnouncementId);
+        await ref.set(payload, { merge: true });
+      } else {
+        ref = await db.collection("announcements").add({
+          ...payload,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      await syncAnnouncementFeeds(ref.id, payload);
+
+      await ref.set({
+        feedVersion: 1,
+        feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      const status = announcementAdminStatus(payload);
+      setStatus(
+        "#announcementStatus",
+        status.label === "SCHEDULED"
+          ? `Announcement scheduled for ${formatAdminDateTime(payload.publishAt)}.`
+          : status.label === "PUBLISHED"
+            ? "Announcement published."
+            : "Announcement saved as unpublished.",
+        true
+      );
+
+      resetAnnouncementForm();
+      await loadAdminAnnouncements();
+    } catch (err) {
+      setStatus("#announcementStatus", err.message || "Could not save announcement.", false);
+    } finally {
+      setBusy(btn, false, editingAnnouncementId ? "UPDATE ANNOUNCEMENT" : "SAVE ANNOUNCEMENT");
+    }
+  }
+
+  async function loadAdminAnnouncements() {
+    const target = $("#adminAnnouncementsList");
+    if (!target) return;
+
+    target.innerHTML = "Loading…";
+
+    try {
+      const snap = await db.collection("announcements").get();
+      const rows = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+          const aDate = announcementTimestampDate(a.publishAt)?.getTime() || 0;
+          const bDate = announcementTimestampDate(b.publishAt)?.getTime() || 0;
+          return bDate - aDate;
+        });
+
+      for (const item of rows) {
+        if (item.feedVersion !== 1) {
+          await syncAnnouncementFeeds(item.id, item);
+          await db.collection("announcements").doc(item.id).set({
+            feedVersion: 1,
+            feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+      }
+
+      target.innerHTML = rows.length
+        ? rows.map(adminAnnouncementItem).join("")
+        : '<div class="announcement-admin-empty">No announcements yet.</div>';
+
+      bindAnnouncementAdminButtons();
+    } catch (err) {
+      target.textContent = err.message || "Could not load announcements.";
+    }
+  }
+
+  function adminAnnouncementItem(item) {
+    const status = announcementAdminStatus(item);
+    const allowed = Array.isArray(item.allowedSections)
+      ? item.allowedSections
+      : ["*"];
+
+    const audience = allowed.includes("*")
+      ? "All Sections"
+      : allowed.join(", ");
+
+    return `
+      <article class="admin-announcement-item">
+        <div class="admin-announcement-main">
+          <div class="admin-announcement-title-row">
+            <strong>${escapeHtml(item.title || "Untitled Announcement")}</strong>
+            <span class="announcement-status-pill ${status.className}">
+              ${status.label}
+            </span>
+          </div>
+
+          <p>${escapeHtml(item.message || "")}</p>
+
+          <small>
+            ${escapeHtml(audience)}
+            • ${escapeHtml(formatAdminDateTime(item.publishAt))}
+          </small>
+        </div>
+
+        <div class="admin-announcement-actions">
+          <button class="mini-btn announcement-view-hearts"
+            data-id="${escapeHtml(item.id)}"
+            data-title="${escapeHtml(item.title || "Announcement")}">
+            ♥ View Hearts
+          </button>
+
+          <button class="mini-btn announcement-edit"
+            data-id="${escapeHtml(item.id)}">
+            Edit
+          </button>
+
+          <button class="mini-btn announcement-toggle"
+            data-id="${escapeHtml(item.id)}"
+            data-published="${item.published ? "1" : "0"}">
+            ${item.published ? "Unpublish" : "Publish"}
+          </button>
+
+          <button class="mini-btn danger announcement-delete"
+            data-id="${escapeHtml(item.id)}">
+            Delete
+          </button>
+        </div>
+      </article>
+    `;
+  }
+
+  function bindAnnouncementAdminButtons() {
+    $$(".announcement-view-hearts").forEach(btn => {
+      btn.addEventListener("click", () =>
+        openAnnouncementHearts(btn.dataset.id, btn.dataset.title)
+      );
+    });
+
+    $$(".announcement-edit").forEach(btn => {
+      btn.addEventListener("click", () =>
+        editAnnouncement(btn.dataset.id)
+      );
+    });
+
+    $$(".announcement-toggle").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const ref = db.collection("announcements").doc(btn.dataset.id);
+        const snap = await ref.get();
+        if (!snap.exists) return;
+
+        const current = { id: snap.id, ...snap.data() };
+        const nextPublished = btn.dataset.published !== "1";
+
+        const updated = {
+          ...current,
+          published: nextPublished,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await ref.update({
+          published: nextPublished,
+          feedVersion: 1,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await syncAnnouncementFeeds(btn.dataset.id, updated);
+        await loadAdminAnnouncements();
+      });
+    });
+
+    $$(".announcement-delete").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this announcement and its heart reactions?")) return;
+
+        await deleteAnnouncement(btn.dataset.id);
+        await loadAdminAnnouncements();
+      });
+    });
+  }
+
+  async function editAnnouncement(announcementId) {
+    const snap = await db.collection("announcements").doc(announcementId).get();
+    if (!snap.exists) return;
+
+    const item = { id: snap.id, ...snap.data() };
+    editingAnnouncementId = item.id;
+
+    $("#announcementTitle").value = item.title || "";
+    $("#announcementMessage").value = item.message || "";
+    $("#announcementPublished").checked = item.published === true;
+
+    const publishDate = announcementTimestampDate(item.publishAt) || new Date();
+    $("#announcementPublishAt").value = toLocalDateTimeInput(publishDate);
+
+    renderMultiSectionPicker(
+      "announcement",
+      $("#announcementSectionsOptions")
+    );
+    setSectionPickerValues("announcement", item.allowedSections);
+
+    $("#announcementFormHeading").textContent = "Edit Announcement";
+    $("#announcementEditBadge").classList.remove("hidden");
+    $("#cancelAnnouncementEditBtn").classList.remove("hidden");
+    $("#saveAnnouncementBtn").textContent = "UPDATE ANNOUNCEMENT";
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteAnnouncement(announcementId) {
+    const ref = db.collection("announcements").doc(announcementId);
+    const snap = await ref.get();
+
+    if (snap.exists) {
+      await syncAnnouncementFeeds(
+        announcementId,
+        { ...snap.data(), published: false }
+      );
+    }
+
+    const heartSnap = await db
+      .collection("announcementHearts")
+      .doc(announcementId)
+      .collection("hearts")
+      .get();
+
+    for (let i = 0; i < heartSnap.docs.length; i += 350) {
+      const batch = db.batch();
+
+      heartSnap.docs.slice(i, i + 350).forEach(doc => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+    }
+
+    const notificationSnap = await db
+      .collection("adminNotifications")
+      .where("announcementId", "==", announcementId)
+      .get();
+
+    for (let i = 0; i < notificationSnap.docs.length; i += 350) {
+      const batch = db.batch();
+
+      notificationSnap.docs.slice(i, i + 350).forEach(doc => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+    }
+
+    await ref.delete();
+  }
+
+  async function openAnnouncementHearts(announcementId, title) {
+    $("#adminHeartsTitle").textContent = title || "Announcement";
+    $("#adminHeartsList").innerHTML = "Loading heart reactions…";
+    $("#adminHeartsModal").classList.remove("hidden");
+
+    try {
+      const snap = await db
+        .collection("announcementHearts")
+        .doc(announcementId)
+        .collection("hearts")
+        .get();
+
+      const rows = snap.docs
+        .map(doc => ({ uid: doc.id, ...doc.data() }))
+        .sort((a, b) => {
+          const aDate = announcementTimestampDate(a.createdAt)?.getTime() || 0;
+          const bDate = announcementTimestampDate(b.createdAt)?.getTime() || 0;
+          return bDate - aDate;
+        });
+
+      $("#adminHeartsList").innerHTML = rows.length
+        ? `
+          <div class="admin-heart-count">♥ ${rows.length} student${rows.length === 1 ? "" : "s"}</div>
+          ${rows.map(row => `
+            <div class="admin-heart-person">
+              <div>
+                <strong>${escapeHtml(row.fullName || row.studentId || "Student")}</strong>
+                <small>${escapeHtml(row.studentId || "")} • ${escapeHtml(row.section || "")}</small>
+              </div>
+              <time>${escapeHtml(formatAdminDateTime(row.createdAt))}</time>
+            </div>
+          `).join("")}
+        `
+        : '<div class="notification-empty">No students have hearted this announcement yet.</div>';
+    } catch (err) {
+      $("#adminHeartsList").textContent =
+        err.message || "Could not load heart reactions.";
+    }
+  }
+
+  function closeAdminHeartsModal() {
+    $("#adminHeartsModal").classList.add("hidden");
+  }
+
+  function startAdminNotificationListener() {
+    if (!db) return;
+
+    if (adminNotificationUnsubscribe) {
+      adminNotificationUnsubscribe();
+    }
+
+    adminNotificationUnsubscribe = db
+      .collection("adminNotifications")
+      .where("seen", "==", false)
+      .onSnapshot(snapshot => {
+        currentUnreadNotifications = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .sort((a, b) => {
+            const aDate = announcementTimestampDate(a.createdAt)?.getTime() || 0;
+            const bDate = announcementTimestampDate(b.createdAt)?.getTime() || 0;
+            return bDate - aDate;
+          });
+
+        renderAdminNotificationPanel();
+      }, err => {
+        console.warn("Notification listener failed:", err);
+      });
+  }
+
+  function renderAdminNotificationPanel() {
+    const count = currentUnreadNotifications.length;
+    const badge = $("#adminNotificationBadge");
+
+    badge.textContent = String(count);
+    badge.classList.toggle("hidden", count === 0);
+
+    $("#adminNotificationList").innerHTML = count
+      ? currentUnreadNotifications.map(item => `
+          <article class="admin-notification-item">
+            <div class="notification-heart">♥</div>
+            <div>
+              <strong>${escapeHtml(item.fullName || item.studentId || "Student")}</strong>
+              <p>hearted “${escapeHtml(item.announcementTitle || "Announcement")}”</p>
+              <small>
+                ${escapeHtml(item.section || "")}
+                • ${escapeHtml(formatAdminDateTime(item.createdAt))}
+              </small>
+            </div>
+          </article>
+        `).join("")
+      : '<div class="notification-empty">No new heart reactions.</div>';
+  }
+
+  function toggleAdminNotificationPanel() {
+    $("#adminNotificationPanel").classList.toggle("hidden");
+  }
+
+  async function markAllAdminNotificationsRead() {
+    if (!currentUnreadNotifications.length) return;
+
+    const rows = currentUnreadNotifications.slice();
+
+    for (let i = 0; i < rows.length; i += 350) {
+      const batch = db.batch();
+
+      rows.slice(i, i + 350).forEach(item => {
+        batch.update(
+          db.collection("adminNotifications").doc(item.id),
+          {
+            seen: true,
+            seenAt: firebase.firestore.FieldValue.serverTimestamp()
+          }
+        );
+      });
+
+      await batch.commit();
+    }
+  }
+
+  function materialFeedCollection(collectionName) {
+    return collectionName === "activities" ? "activityFeeds" : "lessonFeeds";
+  }
+
+  function materialFeedTargets(allowedSections) {
+    const sections = Array.isArray(allowedSections) && allowedSections.length
+      ? allowedSections
+      : ["*"];
+
+    if (sections.includes("*")) return ["ALL_SECTIONS"];
+
+    return Array.from(new Set(
+      sections.map(section => normalizeSectionName(section)).filter(Boolean)
+    ));
+  }
+
+  async function clearMaterialFeeds(collectionName, documentId, allowedSections) {
+    const feedCollection = materialFeedCollection(collectionName);
+    const targets = materialFeedTargets(allowedSections);
+
+    const batch = db.batch();
+    targets.forEach(sectionKey => {
+      const ref = db.collection(feedCollection)
+        .doc(sectionKey)
+        .collection("items")
+        .doc(documentId);
+      batch.delete(ref);
+    });
+    await batch.commit();
+  }
+
+  async function syncMaterialFeeds(collectionName, documentId, payload) {
+    const feedCollection = materialFeedCollection(collectionName);
+
+    // Remove any old feed copies first. This keeps re-publish/repair safe.
+    // We clear all currently known section feeds plus the global feed.
+    const cleanupTargets = ["ALL_SECTIONS", ...knownSections];
+    const cleanupBatch = db.batch();
+    cleanupTargets.forEach(sectionKey => {
+      const ref = db.collection(feedCollection)
+        .doc(sectionKey)
+        .collection("items")
+        .doc(documentId);
+      cleanupBatch.delete(ref);
+    });
+    await cleanupBatch.commit();
+
+    if (!payload || payload.published !== true) return;
+
+    const targets = materialFeedTargets(payload.allowedSections);
+    const feedPayload = {
+      ...payload,
+      sourceId: documentId,
+      feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    const writeBatch = db.batch();
+    targets.forEach(sectionKey => {
+      const ref = db.collection(feedCollection)
+        .doc(sectionKey)
+        .collection("items")
+        .doc(documentId);
+      writeBatch.set(ref, feedPayload);
+    });
+    await writeBatch.commit();
+  }
+
+  async function repairMaterialFeedIfNeeded(collectionName, item) {
+    if (!item || !item.id) return;
+    if (item.feedVersion === 2) return;
+
+    await syncMaterialFeeds(collectionName, item.id, item);
+
+    await db.collection(collectionName).doc(item.id).set({
+      feedVersion: 2,
+      feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    item.feedVersion = 1;
+  }
+
   async function saveLesson(e) {
     e.preventDefault();
     setStatus("#lessonStatus", "Saving lesson…");
@@ -413,7 +1063,12 @@
       };
 
       const ref = await db.collection("lessons").add(payload);
-      await updateLatestTitle("latestLessonTitle", payload.title);
+      await syncMaterialFeeds("lessons", ref.id, payload);
+      await ref.set({
+        feedVersion: 2,
+        feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await refreshDashboardLatest("lessons");
       $("#lessonForm").reset();
       $("#lessonTerm").value = "1";
       $("#lessonOrder").value = "1";
@@ -459,7 +1114,12 @@
       };
 
       const ref = await db.collection("activities").add(payload);
-      await updateLatestTitle("latestActivityTitle", payload.title);
+      await syncMaterialFeeds("activities", ref.id, payload);
+      await ref.set({
+        feedVersion: 2,
+        feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      await refreshDashboardLatest("activities");
       $("#activityForm").reset();
       $("#activityTerm").value = "1";
       $("#activityOrder").value = "1";
@@ -471,9 +1131,82 @@
     }
   }
 
-  async function updateLatestTitle(field, title) {
+  function dashboardMaterialTimestamp(item) {
+    const value = item?.updatedAt;
+
+    if (value && typeof value.toMillis === "function") {
+      return value.toMillis();
+    }
+
+    if (value && typeof value.seconds === "number") {
+      return value.seconds * 1000;
+    }
+
+    return 0;
+  }
+
+  function materialAllowedForSection(item, section) {
+    const allowed = Array.isArray(item?.allowedSections)
+      ? item.allowedSections
+      : [];
+
+    if (!allowed.length) return true;
+    if (allowed.includes("*")) return true;
+    return allowed.includes(section);
+  }
+
+  async function refreshDashboardLatest(collectionName) {
+    const isLesson = collectionName === "lessons";
+    const mapField = isLesson
+      ? "latestLessonBySection"
+      : "latestActivityBySection";
+
+    const legacyField = isLesson
+      ? "latestLessonTitle"
+      : "latestActivityTitle";
+
+    const snap = await db.collection(collectionName)
+      .where("published", "==", true)
+      .get();
+
+    const published = snap.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => String(item.title || "").trim());
+
+    published.sort((a, b) => {
+      const timeDiff =
+        dashboardMaterialTimestamp(b) - dashboardMaterialTimestamp(a);
+
+      if (timeDiff !== 0) return timeDiff;
+
+      const termDiff = Number(b.term || 0) - Number(a.term || 0);
+      if (termDiff !== 0) return termDiff;
+
+      return Number(b.order || 0) - Number(a.order || 0);
+    });
+
+    // Use the same section directory already derived from the student roster.
+    // Each student dashboard receives only the newest published item that
+    // their own section is actually allowed to see.
+    const latestBySection = {};
+
+    knownSections.forEach(section => {
+      const latest = published.find(item =>
+        materialAllowedForSection(item, section)
+      );
+
+      if (latest) {
+        latestBySection[section] = String(latest.title || "").trim();
+      }
+    });
+
     await db.collection("settings").doc("main").set({
-      [field]: title,
+      [mapField]: latestBySection,
+
+      // Remove the old global title so a deleted/unpublished item can never
+      // remain as a stale fallback on student dashboards.
+      [legacyField]: firebase.firestore.FieldValue.delete(),
+
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
   }
@@ -488,8 +1221,15 @@
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => Number(a.term) - Number(b.term) || Number(a.order) - Number(b.order));
 
+      for (const item of rows) {
+        await repairMaterialFeedIfNeeded("lessons", item);
+      }
+
       target.innerHTML = rows.length ? rows.map(x => adminItem(x, "lessons")).join("") : "No lessons yet.";
       bindAdminItemButtons();
+
+      // Self-heal dashboard latest titles from currently published lessons.
+      await refreshDashboardLatest("lessons");
     } catch (err) {
       target.textContent = err.message;
     }
@@ -505,8 +1245,15 @@
         .map(d => ({ id: d.id, ...d.data() }))
         .sort((a, b) => Number(a.term) - Number(b.term) || Number(a.order) - Number(b.order));
 
+      for (const item of rows) {
+        await repairMaterialFeedIfNeeded("activities", item);
+      }
+
       target.innerHTML = rows.length ? rows.map(x => adminItem(x, "activities")).join("") : "No activities yet.";
       bindAdminItemButtons();
+
+      // Self-heal dashboard latest titles from currently published activities.
+      await refreshDashboardLatest("activities");
     } catch (err) {
       target.textContent = err.message;
     }
@@ -529,26 +1276,65 @@
   function bindAdminItemButtons() {
     $$(".admin-toggle").forEach(btn => {
       btn.addEventListener("click", async () => {
-        await db.collection(btn.dataset.collection).doc(btn.dataset.id).update({
-          published: btn.dataset.published !== "1",
+        const ref = db.collection(btn.dataset.collection).doc(btn.dataset.id);
+        const snap = await ref.get();
+        if (!snap.exists) return;
+
+        const current = { id: snap.id, ...snap.data() };
+        const nextPublished = btn.dataset.published !== "1";
+        const updated = {
+          ...current,
+          published: nextPublished,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await ref.update({
+          published: nextPublished,
+          feedVersion: 2,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
-        btn.dataset.collection === "lessons" ? await loadAdminLessons() : await loadAdminActivities();
+
+        await syncMaterialFeeds(btn.dataset.collection, btn.dataset.id, updated);
+        await refreshDashboardLatest(btn.dataset.collection);
+
+        btn.dataset.collection === "lessons"
+          ? await loadAdminLessons()
+          : await loadAdminActivities();
       });
     });
 
     $$(".admin-delete").forEach(btn => {
       btn.addEventListener("click", async () => {
         if (!confirm("Delete this Firestore metadata record? The Drive file itself will not be deleted by this button.")) return;
-        await db.collection(btn.dataset.collection).doc(btn.dataset.id).delete();
-        btn.dataset.collection === "lessons" ? await loadAdminLessons() : await loadAdminActivities();
+
+        const ref = db.collection(btn.dataset.collection).doc(btn.dataset.id);
+        const snap = await ref.get();
+
+        if (snap.exists) {
+          await syncMaterialFeeds(
+            btn.dataset.collection,
+            btn.dataset.id,
+            { ...snap.data(), published: false }
+          );
+        }
+
+        await ref.delete();
+
+        // If the deleted item was displayed on a student dashboard,
+        // replace it with the next valid published item or remove the card.
+        await refreshDashboardLatest(btn.dataset.collection);
+
+        btn.dataset.collection === "lessons"
+          ? await loadAdminLessons()
+          : await loadAdminActivities();
       });
     });
   }
 
   async function createStudent(e) {
     e.preventDefault();
-    setStatus("#studentStatus", "Creating Firebase Auth account…");
+    setStatus("#studentStatus", "Creating student account…");
 
     try {
       const studentId = $("#newStudentId").value.trim();
@@ -559,38 +1345,60 @@
         throw new Error("Please select or enter a section.");
       }
 
-      const email = G10DataService.studentIdToEmail(studentId);
-
-      const apiKey = G10_CONFIG.firebase.apiKey;
-      const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(apiKey)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, returnSecureToken: true })
-      });
-
-      const authResult = await response.json();
-      if (!response.ok) {
-        const message = authResult?.error?.message || "Could not create Firebase Authentication user.";
-        throw new Error(message);
+      if (!String(G10_CONFIG.appsScriptUrl || "").trim()) {
+        throw new Error(
+          "Secure student creation now uses Apps Script to avoid Firebase's client signup limit. Configure appsScriptUrl first."
+        );
       }
 
-      const uid = authResult.localId;
-      await db.collection("students").doc(uid).set({
+      const student = {
         studentId,
         fullName: $("#newStudentName").value.trim(),
         gender: $("#newStudentGender").value,
-        section,
+        section
+      };
+
+      const result = await callAppsScriptSecure({
+        action: "createStudentAccounts",
+        password,
+        students: [student]
+      });
+
+      const account = result.results && result.results[0];
+      if (!account || !account.uid) {
+        throw new Error(account?.error || "Firebase Authentication account was not created.");
+      }
+
+      const profile = {
+        studentId: student.studentId,
+        fullName: student.fullName,
+        gender: student.gender,
+        section: student.section,
         role: "student",
         active: true,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+      };
+
+      if (account.status === "created") {
+        profile.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        profile.mustChangePassword = true;
+      }
+
+      await db.collection("students").doc(account.uid).set(profile, { merge: true });
 
       $("#studentForm").reset();
       $("#newStudentPassword").value = "123456";
       $("#newStudentSectionCustomWrap").classList.add("hidden");
       $("#newStudentSectionCustom").required = false;
-      setStatus("#studentStatus", `Student created. Login ID: ${studentId}`, true);
+
+      setStatus(
+        "#studentStatus",
+        account.status === "created"
+          ? `Student created. Login ID: ${studentId}`
+          : `Existing Firebase account linked/updated. Login ID: ${studentId}`,
+        true
+      );
+
       await loadSectionDirectory(true);
       await loadStudents();
     } catch (err) {
@@ -827,91 +1635,122 @@
       return;
     }
 
+    if (!String(G10_CONFIG.appsScriptUrl || "").trim()) {
+      setStatus(
+        "#bulkStudentStatus",
+        "Secure bulk account creation requires the Apps Script Web App URL in firebase-config.js.",
+        false
+      );
+      return;
+    }
+
     const btn = $("#bulkImportBtn");
     btn.disabled = true;
 
     let created = 0;
-    let skipped = 0;
+    let existing = 0;
     let failed = 0;
     const failures = [];
 
-    for (let i = 0; i < validRows.length; i++) {
-      const row = validRows[i];
-      btn.textContent = `IMPORTING ${i + 1}/${validRows.length}…`;
-      setStatus(
-        "#bulkStudentStatus",
-        `Creating ${i + 1} of ${validRows.length}: ${row.fullName}…`
-      );
+    try {
+      const chunkSize = 50;
 
-      try {
-        const result = await createStudentFromRoster(row, password);
-        if (result === "created") created++;
-        if (result === "skipped") skipped++;
-      } catch (err) {
-        failed++;
-        failures.push(`${row.studentId}: ${err.message || "Failed"}`);
+      for (let start = 0; start < validRows.length; start += chunkSize) {
+        const chunk = validRows.slice(start, start + chunkSize);
+        const end = Math.min(start + chunk.length, validRows.length);
+
+        btn.textContent = `IMPORTING ${start + 1}-${end}/${validRows.length}…`;
+        setStatus(
+          "#bulkStudentStatus",
+          `Creating/looking up Firebase accounts ${start + 1}-${end} of ${validRows.length}…`
+        );
+
+        const result = await callAppsScriptSecure({
+          action: "createStudentAccounts",
+          password,
+          students: chunk.map(row => ({
+            studentId: row.studentId,
+            fullName: row.fullName,
+            gender: row.gender,
+            section: row.section
+          }))
+        });
+
+        const accounts = Array.isArray(result.results) ? result.results : [];
+        let batch = db.batch();
+        let batchWrites = 0;
+
+        for (let i = 0; i < chunk.length; i++) {
+          const row = chunk[i];
+          const account = accounts[i];
+
+          if (!account || !account.uid) {
+            failed++;
+            failures.push(
+              `${row.studentId}: ${account?.error || "Firebase Authentication account failed"}`
+            );
+            continue;
+          }
+
+          if (account.status === "created") created++;
+          else existing++;
+
+          const ref = db.collection("students").doc(account.uid);
+          const profile = {
+            studentId: row.studentId,
+            fullName: row.fullName,
+            gender: row.gender,
+            section: row.section,
+            role: "student",
+            active: true,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          };
+
+          if (account.status === "created") {
+            profile.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            profile.mustChangePassword = true;
+          }
+
+          batch.set(ref, profile, { merge: true });
+          batchWrites++;
+
+          if (batchWrites >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            batchWrites = 0;
+          }
+        }
+
+        if (batchWrites > 0) {
+          await batch.commit();
+        }
       }
 
-      // Small yield so the browser UI stays responsive during large rosters.
-      await new Promise(resolve => setTimeout(resolve, 20));
+      $("#bulkStudentFile").value = "";
+      bulkStudentRows = [];
+      $("#bulkPreviewWrap").classList.add("hidden");
+
+      const parts = [`New: ${created}`];
+      if (existing) parts.push(`Existing/updated: ${existing}`);
+      if (failed) parts.push(`Failed: ${failed}`);
+
+      setStatus(
+        "#bulkStudentStatus",
+        parts.join(" • ") +
+          (failures.length ? ` — ${failures.slice(0, 3).join(" | ")}` : ""),
+        failed === 0
+      );
+
+      await loadSectionDirectory(true);
+      await loadStudents();
+    } catch (err) {
+      setStatus("#bulkStudentStatus", err.message || "Bulk import failed.", false);
+    } finally {
+      btn.textContent = "IMPORT VALID STUDENTS";
+      btn.disabled = false;
     }
-
-    btn.textContent = "IMPORT VALID STUDENTS";
-    $("#bulkStudentFile").value = "";
-    bulkStudentRows = [];
-    $("#bulkPreviewWrap").classList.add("hidden");
-
-    const parts = [`Created: ${created}`];
-    if (skipped) parts.push(`Skipped existing: ${skipped}`);
-    if (failed) parts.push(`Failed: ${failed}`);
-
-    setStatus(
-      "#bulkStudentStatus",
-      parts.join(" • ") + (failures.length ? ` — ${failures.slice(0, 3).join(" | ")}` : ""),
-      failed === 0
-    );
-
-    await loadSectionDirectory(true);
-    await loadStudents();
   }
 
-  async function createStudentFromRoster(row, password) {
-    const email = G10DataService.studentIdToEmail(row.studentId);
-    const apiKey = G10_CONFIG.firebase.apiKey;
-
-    const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(apiKey)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email,
-        password,
-        returnSecureToken: true
-      })
-    });
-
-    const authResult = await response.json();
-
-    if (!response.ok) {
-      const message = authResult?.error?.message || "Could not create Authentication account.";
-      if (message === "EMAIL_EXISTS") return "skipped";
-      throw new Error(message);
-    }
-
-    const uid = authResult.localId;
-
-    await db.collection("students").doc(uid).set({
-      studentId: row.studentId,
-      fullName: row.fullName,
-      gender: row.gender,
-      section: row.section,
-      role: "student",
-      active: true,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-
-    return "created";
-  }
 
   async function loadStudents() {
     const target = $("#adminStudentsList");
@@ -969,132 +1808,727 @@
     });
   }
 
-  async function previewSync(e) {
-    e.preventDefault();
-    const url = String(G10_CONFIG.appsScriptUrl || "").trim();
-    if (!url) {
-      setStatus("#syncStatus", "Set appsScriptUrl in firebase-config.js first.", false);
-      return;
+
+  const COMPLIANCE_TASK_GROUPS = [
+    {
+      key: "ww",
+      title: "Written Works",
+      short: "WW",
+      count: 10,
+      defaultName: number => `Written Work ${number}`
+    },
+    {
+      key: "pt",
+      title: "Performance Tasks",
+      short: "PT",
+      count: 10,
+      defaultName: number => `Performance Task ${number}`
+    },
+    {
+      key: "ta",
+      title: "Term Assessment",
+      short: "TA",
+      count: 2,
+      defaultName: number => `Term Assessment ${number}`
+    }
+  ];
+
+  function defaultComplianceSettings() {
+    return {
+      term: 1,
+      selectedSections: knownSections.slice(),
+      sections: knownSections.map(section => ({
+        section,
+        spreadsheetRef: ""
+      })),
+      taskNamesByTerm: {
+        term1: {},
+        term2: {},
+        term3: {}
+      }
+    };
+  }
+
+  function normalizeComplianceSettings(raw = {}) {
+    const defaults = defaultComplianceSettings();
+    const savedSections = Array.isArray(raw.sections) ? raw.sections : [];
+    const savedByName = new Map();
+
+    savedSections.forEach(item => {
+      const section = normalizeSectionName(item?.section);
+      if (!section) return;
+      savedByName.set(section.toLowerCase(), {
+        section,
+        spreadsheetRef: String(item?.spreadsheetRef || item?.sheetUrl || "").trim()
+      });
+    });
+
+    const sections = knownSections.map(section => {
+      const saved = savedByName.get(section.toLowerCase());
+      return {
+        section,
+        spreadsheetRef: saved?.spreadsheetRef || ""
+      };
+    });
+
+    const savedSelected = Array.isArray(raw.selectedSections)
+      ? raw.selectedSections.map(normalizeSectionName).filter(Boolean)
+      : [];
+
+    const validSectionSet = new Set(knownSections);
+    let selectedSections = savedSelected.filter(section => validSectionSet.has(section));
+
+    if (!selectedSections.length && knownSections.length) {
+      selectedSections = sections
+        .filter(item => item.spreadsheetRef)
+        .map(item => item.section);
+
+      if (!selectedSections.length) {
+        selectedSections = knownSections.slice();
+      }
     }
 
-    const resolvedSheetName = getSyncSheetName();
-    if (!resolvedSheetName) {
-      setStatus("#syncStatus", "Select a section or enter the exact Google Sheet tab name.", false);
-      return;
+    const sourceTaskNames = raw.taskNamesByTerm && typeof raw.taskNamesByTerm === "object"
+      ? raw.taskNamesByTerm
+      : {};
+
+    const normalizeTaskMap = source => {
+      const result = {};
+      if (!source || typeof source !== "object") return result;
+
+      Object.entries(source).forEach(([key, value]) => {
+        const normalizedKey = String(key || "").trim().toLowerCase();
+        const label = String(value || "").trim();
+        if (normalizedKey && label) result[normalizedKey] = label;
+      });
+      return result;
+    };
+
+    const term = [1, 2, 3].includes(Number(raw.term)) ? Number(raw.term) : defaults.term;
+
+    return {
+      term,
+      selectedSections,
+      sections,
+      taskNamesByTerm: {
+        term1: normalizeTaskMap(sourceTaskNames.term1),
+        term2: normalizeTaskMap(sourceTaskNames.term2),
+        term3: normalizeTaskMap(sourceTaskNames.term3)
+      }
+    };
+  }
+
+  function complianceSettingsDocRef() {
+    return db.collection("complianceSettings").doc("main");
+  }
+
+  function complianceSheetTabForTerm(term) {
+    const value = Number(term);
+    const safeTerm = [1, 2, 3].includes(value) ? value : 1;
+    return `TERM_${safeTerm}`;
+  }
+
+  function updateComplianceSheetTabIndicator() {
+    const term = Number($("#syncTerm")?.value || 1);
+    const sheetName = complianceSheetTabForTerm(term);
+    const label = $("#syncSheetTabLabel");
+    if (label) label.textContent = sheetName;
+    return sheetName;
+  }
+
+  function currentComplianceTermKey() {
+    const term = Number($("#syncTerm")?.value || complianceSettingsCache?.term || 1);
+    return `term${[1, 2, 3].includes(term) ? term : 1}`;
+  }
+
+  function currentComplianceTaskNames() {
+    const settings = complianceSettingsCache || defaultComplianceSettings();
+    return {
+      ...(settings.taskNamesByTerm?.[currentComplianceTermKey()] || {})
+    };
+  }
+
+  async function loadComplianceSetup() {
+    previewPayload = null;
+    $("#syncPreviewNote").textContent = "No preview loaded yet.";
+    $("#syncPreviewTable").innerHTML = "";
+    $("#syncActiveTasks").innerHTML = "";
+
+    try {
+      const snap = await complianceSettingsDocRef().get();
+      const raw = snap.exists ? snap.data() : {};
+      complianceSettingsCache = normalizeComplianceSettings(raw);
+
+      $("#syncTerm").value = String(complianceSettingsCache.term || 1);
+      updateComplianceSheetTabIndicator();
+      renderComplianceSectionSettings();
+      renderComplianceTaskGroup();
+
+      setStatus(
+        "#complianceSetupStatus",
+        snap.exists
+          ? "Compliance settings loaded from Firebase."
+          : "No saved Compliance settings yet. Paste the four section links, set task names, then Save Settings.",
+        snap.exists ? true : null
+      );
+    } catch (err) {
+      complianceSettingsCache = normalizeComplianceSettings({});
+      renderComplianceSectionSettings();
+      renderComplianceTaskGroup();
+      setStatus("#complianceSetupStatus", err.message, false);
+    }
+  }
+
+  function renderComplianceSectionSettings() {
+    const target = $("#complianceSectionSettingsList");
+    if (!target) return;
+
+    const settings = complianceSettingsCache || normalizeComplianceSettings({});
+    const selected = new Set(settings.selectedSections || []);
+
+    $("#complianceDetectedBadge").textContent =
+      `${knownSections.length} section${knownSections.length === 1 ? "" : "s"} detected`;
+
+    target.innerHTML = settings.sections.length
+      ? settings.sections.map((item, index) => {
+          const ready = !!String(item.spreadsheetRef || "").trim();
+          return `
+            <div class="compliance-v2-section-row ${ready ? "configured" : ""}">
+              <label class="compliance-v2-section-check" title="Include this section when syncing">
+                <input
+                  type="checkbox"
+                  data-compliance-section-check="${index}"
+                  ${selected.has(item.section) ? "checked" : ""}>
+              </label>
+
+              <div class="compliance-v2-section-name">
+                <strong>${escapeHtml(item.section)}</strong>
+                <small>${ready ? "Google Sheet saved" : "Google Sheet link needed"}</small>
+              </div>
+
+              <input
+                class="compliance-v2-sheet-input"
+                type="text"
+                data-compliance-section-url="${index}"
+                value="${escapeHtml(item.spreadsheetRef || "")}"
+                placeholder="Paste Google Sheet URL or Spreadsheet ID">
+
+              <span class="compliance-v2-link-status ${ready ? "ready" : "missing"}">
+                ${ready ? "READY" : "NO LINK"}
+              </span>
+            </div>
+          `;
+        }).join("")
+      : `
+        <div class="section-empty">
+          No sections detected. Import the student roster first.
+        </div>
+      `;
+
+    target.querySelectorAll("[data-compliance-section-url]").forEach(input => {
+      input.addEventListener("input", () => {
+        const row = input.closest(".compliance-v2-section-row");
+        const status = row?.querySelector(".compliance-v2-link-status");
+        const hasValue = !!String(input.value || "").trim();
+
+        row?.classList.toggle("configured", hasValue);
+
+        if (status) {
+          status.classList.toggle("ready", hasValue);
+          status.classList.toggle("missing", !hasValue);
+          status.textContent = hasValue ? "READY" : "NO LINK";
+        }
+
+        const small = row?.querySelector(".compliance-v2-section-name small");
+        if (small) small.textContent = hasValue ? "Google Sheet ready" : "Google Sheet link needed";
+      });
+    });
+  }
+
+  function collectComplianceSettingsFromControls() {
+    const settings = normalizeComplianceSettings(complianceSettingsCache || {});
+    captureVisibleComplianceTaskNames();
+
+    settings.term = Number($("#syncTerm")?.value || settings.term || 1);
+
+    settings.sections = settings.sections.map((item, index) => {
+      const input = $(`[data-compliance-section-url="${index}"]`);
+      return {
+        section: item.section,
+        spreadsheetRef: String(input?.value || item.spreadsheetRef || "").trim()
+      };
+    });
+
+    settings.selectedSections = $$("[data-compliance-section-check]")
+      .filter(input => input.checked)
+      .map(input => {
+        const index = Number(input.dataset.complianceSectionCheck);
+        return settings.sections[index]?.section || "";
+      })
+      .filter(Boolean);
+
+    complianceSettingsCache = settings;
+    return settings;
+  }
+
+  async function saveComplianceSettingsToFirebase(options = {}) {
+    const button = $("#saveComplianceSettingsBtn");
+    if (!options.silent) setBusy(button, true, "SAVING…");
+
+    try {
+      const settings = collectComplianceSettingsFromControls();
+
+      await complianceSettingsDocRef().set({
+        term: settings.term,
+        selectedSections: settings.selectedSections,
+        sections: settings.sections,
+        taskNamesByTerm: settings.taskNamesByTerm,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: admin.uid
+      }, { merge: true });
+
+      complianceSettingsCache = settings;
+
+      if (!options.silent) {
+        setStatus(
+          "#complianceSetupStatus",
+          "Saved to Firebase. Your four section links and shared task names will load again on this or another device.",
+          true
+        );
+      }
+
+      return settings;
+    } catch (err) {
+      if (!options.silent) setStatus("#complianceSetupStatus", err.message, false);
+      throw err;
+    } finally {
+      if (!options.silent) setBusy(button, false, "SAVE SETTINGS TO FIREBASE");
+    }
+  }
+
+  function setAllComplianceSectionsChecked(checked) {
+    $$("[data-compliance-section-check]").forEach(input => {
+      input.checked = !!checked;
+    });
+
+    if (complianceSettingsCache) {
+      complianceSettingsCache.selectedSections = checked
+        ? complianceSettingsCache.sections.map(item => item.section)
+        : [];
+    }
+  }
+
+  function handleComplianceTermChange() {
+    captureVisibleComplianceTaskNames();
+
+    const term = Number($("#syncTerm").value || 1);
+    if (complianceSettingsCache) complianceSettingsCache.term = term;
+
+    updateComplianceSheetTabIndicator();
+
+    activeComplianceTaskGroup = "ww";
+    renderComplianceTaskGroup();
+
+    previewPayload = null;
+    $("#syncPreviewNote").textContent = "No preview loaded yet.";
+    $("#syncPreviewTable").innerHTML = "";
+    $("#syncActiveTasks").innerHTML = "";
+  }
+
+  function getComplianceTaskGroup(prefix = activeComplianceTaskGroup) {
+    return COMPLIANCE_TASK_GROUPS.find(group => group.key === prefix)
+      || COMPLIANCE_TASK_GROUPS[0];
+  }
+
+  function renderComplianceTaskGroup() {
+    const target = $("#complianceTaskNameGrid");
+    if (!target) return;
+
+    const term = Number($("#syncTerm")?.value || 1);
+    const termKey = `term${term}`;
+    const group = getComplianceTaskGroup();
+    const names = complianceSettingsCache?.taskNamesByTerm?.[termKey] || {};
+
+    $("#taskMapLabel").textContent = `TERM ${term} • ALL SECTIONS`;
+
+    $$("[data-compliance-task-group]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.complianceTaskGroup === group.key);
+    });
+
+    target.innerHTML = Array.from({ length: group.count }, (_, index) => {
+      const number = index + 1;
+      const key = `${group.key}${number}`;
+      return `
+        <label class="compliance-v2-task-row">
+          <span class="compliance-v2-task-key">${escapeHtml(group.short)} ${number}</span>
+          <input
+            class="compliance-task-name"
+            data-task-key="${escapeHtml(key)}"
+            type="text"
+            value="${escapeHtml(names[key] || "")}"
+            placeholder="${escapeHtml(group.defaultName(number))}">
+        </label>
+      `;
+    }).join("");
+  }
+
+  function captureVisibleComplianceTaskNames() {
+    if (!complianceSettingsCache) return;
+
+    const termKey = currentComplianceTermKey();
+    const names = {
+      ...(complianceSettingsCache.taskNamesByTerm?.[termKey] || {})
+    };
+
+    $$(".compliance-task-name").forEach(input => {
+      const key = String(input.dataset.taskKey || "").trim().toLowerCase();
+      const value = String(input.value || "").trim();
+
+      if (!key) return;
+      if (value) names[key] = value;
+      else delete names[key];
+    });
+
+    complianceSettingsCache.taskNamesByTerm[termKey] = names;
+  }
+
+  function collectAllTaskNamesForCurrentTerm() {
+    captureVisibleComplianceTaskNames();
+    return currentComplianceTaskNames();
+  }
+
+  function resetCurrentComplianceTaskGroup() {
+    if (!complianceSettingsCache) return;
+
+    const termKey = currentComplianceTermKey();
+    const group = getComplianceTaskGroup();
+    const names = {
+      ...(complianceSettingsCache.taskNamesByTerm?.[termKey] || {})
+    };
+
+    for (let number = 1; number <= group.count; number++) {
+      delete names[`${group.key}${number}`];
     }
 
-    setStatus("#syncStatus", "Reading and processing the selected sheet through Apps Script…");
-    $("#publishSyncBtn").disabled = true;
+    complianceSettingsCache.taskNamesByTerm[termKey] = names;
+    renderComplianceTaskGroup();
+  }
+
+  function defaultComplianceTaskName(key) {
+    const match = /^([a-z]+)(\d+)$/.exec(String(key || "").toLowerCase());
+    if (!match) return "Task";
+
+    const group = COMPLIANCE_TASK_GROUPS.find(item => item.key === match[1]);
+    const number = Number(match[2]);
+
+    return group ? group.defaultName(number) : `Task ${number}`;
+  }
+
+  function selectedComplianceSections(settings) {
+    const selectedSet = new Set(settings.selectedSections || []);
+
+    const selected = settings.sections.filter(item => selectedSet.has(item.section));
+
+    if (!selected.length) {
+      throw new Error("Check at least one section to sync.");
+    }
+
+    const missing = selected.filter(item => !String(item.spreadsheetRef || "").trim());
+
+    if (missing.length) {
+      throw new Error(
+        "Paste and save the Google Sheet link first for: " +
+        missing.map(item => item.section).join(", ")
+      );
+    }
+
+    return selected;
+  }
+
+  async function readSelectedComplianceSections(options = {}) {
+    const settings = await saveComplianceSettingsToFirebase({ silent: true });
+    const selected = selectedComplianceSections(settings);
+    const taskNames = collectAllTaskNamesForCurrentTerm();
+    const term = Number(settings.term || 1);
+    const sheetName = complianceSheetTabForTerm(term);
+
+    const results = [];
+    const errors = [];
+
+    for (let index = 0; index < selected.length; index++) {
+      const item = selected[index];
+
+      if (options.onProgress) {
+        options.onProgress({
+          section: item.section,
+          current: index + 1,
+          total: selected.length
+        });
+      }
+
+      try {
+        const result = await callAppsScriptSecure({
+          action: "previewCompliance",
+          section: item.section,
+          spreadsheetRef: item.spreadsheetRef,
+          term,
+          sheetName,
+          taskNames
+        });
+
+        results.push({
+          ...result,
+          section: item.section,
+          spreadsheetRef: item.spreadsheetRef
+        });
+      } catch (err) {
+        errors.push({
+          section: item.section,
+          error: err.message || "Could not read this section."
+        });
+      }
+    }
+
+    return {
+      term,
+      sheetName,
+      taskNames,
+      sections: results,
+      errors,
+      readyToPublish: results.some(result => result.readyToPublish)
+    };
+  }
+
+  async function previewSync() {
+    const button = $("#previewComplianceBtn");
+    setBusy(button, true, "READING SHEETS…");
+    setStatus("#syncStatus", "Reading checked section(s) from Google Sheets…");
     previewPayload = null;
 
     try {
-      const result = await callAppsScriptSecure({
-        action: "previewCompliance",
-        sheetName: resolvedSheetName,
-        term: Number($("#syncTerm").value)
+      const payload = await readSelectedComplianceSections({
+        onProgress: progress => {
+          setStatus(
+            "#syncStatus",
+            `Reading ${progress.section}… ${progress.current}/${progress.total}`
+          );
+        }
       });
 
-      previewPayload = result;
-      renderSyncPreview(result);
+      previewPayload = payload;
+      renderSyncPreview(payload);
 
-      /*
-        Publishing is only enabled if Apps Script declares the preview ready.
-        The supplied architecture did not define the teacher's exact Sheet
-        columns or compliance band thresholds, so Code.gs intentionally
-        refuses to invent those rules.
-      */
-      $("#publishSyncBtn").disabled = !result.readyToPublish;
+      const studentCount = payload.sections.reduce(
+        (total, section) => total + (section.students?.length || 0),
+        0
+      );
+
+      const issueText = payload.errors.length
+        ? ` • ${payload.errors.length} section issue(s)`
+        : "";
+
       setStatus(
         "#syncStatus",
-        result.readyToPublish
-          ? "Preview ready. Review it before publishing."
-          : "Preview loaded, but publishing is disabled until the sheet mapping/band rules are configured in Code.gs.",
-        !!result.readyToPublish
+        `Preview ready: ${studentCount} student rows across ${payload.sections.length} section(s)${issueText}.`,
+        payload.sections.length > 0
       );
     } catch (err) {
       setStatus("#syncStatus", err.message, false);
       $("#syncPreviewTable").innerHTML = "";
+      $("#syncActiveTasks").innerHTML = "";
+    } finally {
+      setBusy(button, false, "PREVIEW CHECKED SECTIONS");
     }
   }
 
-  function renderSyncPreview(result) {
-    $("#syncPreviewNote").textContent = result.note || `${result.students?.length || 0} student rows processed.`;
+  function renderSyncPreview(payload) {
+    const sections = Array.isArray(payload?.sections) ? payload.sections : [];
+    const errors = Array.isArray(payload?.errors) ? payload.errors : [];
 
-    const students = Array.isArray(result.students) ? result.students : [];
-    if (!students.length) {
-      $("#syncPreviewTable").innerHTML = `<div class="empty-state">No preview rows returned.</div>`;
+    const totalStudents = sections.reduce(
+      (total, section) => total + (section.students?.length || 0),
+      0
+    );
+
+    $("#syncPreviewNote").textContent =
+      sections.length
+        ? `${sections.length} section(s) • ${totalStudents} student row(s) • ${payload.sheetName || `TERM_${payload.term}`}`
+        : "No section preview is available.";
+
+    $("#syncActiveTasks").innerHTML = sections.length
+      ? `
+        <div class="compliance-v2-preview-summary">
+          ${sections.map(section => `
+            <div class="compliance-v2-preview-section">
+              <strong>${escapeHtml(section.section)}</strong>
+              <span>${section.students?.length || 0} students</span>
+              <span>${section.activeTasks?.length || 0} active requirements</span>
+            </div>
+          `).join("")}
+          ${errors.map(item => `
+            <div class="compliance-v2-preview-section error">
+              <strong>${escapeHtml(item.section)}</strong>
+              <span>${escapeHtml(item.error)}</span>
+            </div>
+          `).join("")}
+        </div>
+      `
+      : "";
+
+    const rows = sections.flatMap(section =>
+      (section.students || []).map(student => ({
+        section: section.section,
+        ...student
+      }))
+    );
+
+    if (!rows.length) {
+      $("#syncPreviewTable").innerHTML = `<div class="empty-state">No student rows returned.</div>`;
       return;
     }
 
     $("#syncPreviewTable").innerHTML = `
       <table class="preview-table">
-        <thead><tr><th>Student ID</th><th>Name</th><th>Tasks</th><th>Publish Ready</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th>Requirements</th>
+            <th>Missing</th>
+          </tr>
+        </thead>
         <tbody>
-          ${students.map(s => `
+          ${rows.map(student => `
             <tr>
-              <td>${escapeHtml(s.studentId || "")}</td>
-              <td>${escapeHtml(s.fullName || "")}</td>
-              <td>${escapeHtml(String((s.tasks || []).length))}</td>
-              <td>${s.ready ? "Yes" : "No"}</td>
-            </tr>`).join("")}
+              <td>${escapeHtml(student.section || "")}</td>
+              <td>${escapeHtml(student.studentId || "")}</td>
+              <td>${escapeHtml(student.fullName || "")}</td>
+              <td>${escapeHtml(String((student.tasks || []).length))}</td>
+              <td>${escapeHtml(String(student.missingCount || 0))}</td>
+            </tr>
+          `).join("")}
         </tbody>
-      </table>`;
+      </table>
+    `;
   }
 
   async function publishSync() {
-    if (!previewPayload || !previewPayload.readyToPublish) return;
-    const btn = $("#publishSyncBtn");
-    setBusy(btn, true, "PUBLISHING…");
-    setStatus("#syncStatus", "Publishing a new snapshot. Existing student snapshots remain available until each new document is written.");
+    const button = $("#publishSyncBtn");
+    setBusy(button, true, "SYNCING & PUBLISHING…");
+    setStatus("#syncStatus", "Reading the latest Google Sheet data before publishing…");
 
     try {
-      const studentsById = new Map();
-      const studentSnap = await db.collection("students").get();
-      studentSnap.docs.forEach(doc => {
-        const data = doc.data();
-        if (data.studentId) studentsById.set(String(data.studentId).trim(), doc.id);
+      const payload = await readSelectedComplianceSections({
+        onProgress: progress => {
+          setStatus(
+            "#syncStatus",
+            `Reading ${progress.section}… ${progress.current}/${progress.total}`
+          );
+        }
       });
+
+      previewPayload = payload;
+      renderSyncPreview(payload);
+
+      if (!payload.readyToPublish) {
+        throw new Error("No student records are ready to publish from the checked sections.");
+      }
 
       const batchLimit = 400;
       let batch = db.batch();
-      let count = 0;
-      let written = 0;
+      let pendingWrites = 0;
+      let published = 0;
+      let skippedInvalidIds = 0;
 
-      for (const row of previewPayload.students || []) {
-        const uid = studentsById.get(String(row.studentId || "").trim());
-        if (!uid) continue;
+      for (const sectionPayload of payload.sections) {
+        if (!sectionPayload.readyToPublish) continue;
 
-        const ref = db.collection("studentCompliance")
-          .doc(uid)
-          .collection("terms")
-          .doc(`term${Number(previewPayload.term)}`);
+        const normalizedSection = normalizeSectionName(sectionPayload.section);
 
-        batch.set(ref, {
-          term: Number(previewPayload.term),
-          lastUpdated: new Date().toISOString(),
-          tasks: row.tasks || [],
-          source: "apps-script-preview",
-          publishedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
+        for (const row of sectionPayload.students || []) {
+          const rawStudentId = String(row.studentId || "").trim();
+          const normalizedStudentId = G10DataService.normalizeStudentId(rawStudentId);
 
-        count++;
-        written++;
+          if (!normalizedStudentId) {
+            skippedInvalidIds++;
+            continue;
+          }
 
-        if (count >= batchLimit) {
-          await batch.commit();
-          batch = db.batch();
-          count = 0;
+          // Same reliable pattern used by the working Code Editor Compliance:
+          // the published document key comes from Student ID itself.
+          const studentAuthEmail = G10DataService.studentIdToEmail(normalizedStudentId);
+
+          const tasks = Array.isArray(row.tasks) ? row.tasks : [];
+          const missingCount = tasks.filter(task => task && task.missing === true).length;
+          const completeCount = Math.max(0, tasks.length - missingCount);
+
+          const ref = db.collection("studentCompliance")
+            .doc(normalizedStudentId)
+            .collection("terms")
+            .doc(`term${Number(payload.term)}`);
+
+          batch.set(ref, {
+            studentId: normalizedStudentId,
+            studentIdOriginal: rawStudentId,
+            studentAuthEmail,
+            fullName: String(row.fullName || "").trim(),
+            term: Number(payload.term),
+            section: normalizedSection,
+            lastUpdated: new Date().toISOString(),
+            summary: {
+              complete: completeCount,
+              missing: missingCount,
+              total: tasks.length
+            },
+            tasks,
+            source: "e-class-record",
+            complianceSchemaVersion: 2,
+            colorScale: "hps-0-40-41-74-75-85-86-90-91-100",
+            publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            publishedBy: admin.email || admin.uid || "teacher"
+          }, { merge: true });
+
+          pendingWrites++;
+          published++;
+
+          if (pendingWrites >= batchLimit) {
+            await batch.commit();
+            batch = db.batch();
+            pendingWrites = 0;
+          }
         }
       }
 
-      if (count > 0) await batch.commit();
-      setStatus("#syncStatus", `Published ${written} student compliance snapshot(s).`, true);
+      if (pendingWrites > 0) {
+        await batch.commit();
+      }
+
+      const issueParts = [];
+
+      if (payload.errors.length) {
+        issueParts.push(`${payload.errors.length} sheet issue(s)`);
+      }
+
+      if (skippedInvalidIds) {
+        issueParts.push(`${skippedInvalidIds} invalid Student ID(s) skipped`);
+      }
+
+      setStatus(
+        "#syncStatus",
+        `Published ${published} student compliance snapshot(s) for TERM ${payload.term}` +
+          (issueParts.length ? ` • ${issueParts.join(" • ")}` : "") +
+          ". Students can open Compliance and press Refresh.",
+        published > 0
+      );
     } catch (err) {
       setStatus("#syncStatus", err.message, false);
     } finally {
-      setBusy(btn, false, "PUBLISH PREVIEW TO FIRESTORE");
+      setBusy(button, false, "SYNC CHECKED SECTIONS & PUBLISH");
     }
   }
+
+
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {

@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121316">
-  <title>Admin • Grade 10 Arduino Hub</title>
+  <title>Admin • MCSian ICT 10 Portal</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MCSian ICT 10">
 
   <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
@@ -18,6 +24,7 @@
   <script defer src="demo-data.js"></script>
   <script defer src="data-service.js"></script>
   <script defer src="admin.js"></script>
+  <script defer src="pwa.js"></script>
 </head>
 <body>
   <section id="adminLoginView" class="admin-login">
@@ -46,14 +53,39 @@
   <div id="adminApp" class="admin-shell hidden">
     <header class="admin-top">
       <div class="admin-brand">
-        <div class="mini-board">UNO</div>
-        <div>
-          <strong>Grade 10 Arduino Hub</strong>
+        <img class="portal-brand-icon" src="icons/icon-192.png" alt="">
+        <div class="admin-brand-copy">
+          <strong>
+            <span class="brand-mcsian">MCSian</span>
+            <span class="brand-ict10">ICT 10</span>
+            <span class="admin-brand-portal">Portal</span>
+          </strong>
           <small>Admin Panel</small>
         </div>
       </div>
-      <div class="inline-actions">
+      <div class="inline-actions admin-top-actions">
         <span id="adminName" style="font-size:.76rem;color:#c6cbd3;"></span>
+
+        <div class="admin-notification-wrap">
+          <button id="adminNotificationBtn" class="admin-notification-btn" type="button" aria-label="Heart notifications">
+            <span aria-hidden="true">🔔</span>
+            <span id="adminNotificationBadge" class="admin-notification-badge hidden">0</span>
+          </button>
+
+          <div id="adminNotificationPanel" class="admin-notification-panel hidden">
+            <div class="admin-notification-head">
+              <div>
+                <strong>Heart Notifications</strong>
+                <small>New student reactions</small>
+              </div>
+              <button id="markNotificationsReadBtn" class="mini-btn" type="button">Mark all read</button>
+            </div>
+            <div id="adminNotificationList" class="admin-notification-list">
+              <div class="notification-empty">No new heart reactions.</div>
+            </div>
+          </div>
+        </div>
+
         <button id="adminLogout" class="mini-btn">Log out</button>
       </div>
     </header>
@@ -61,6 +93,7 @@
     <main class="admin-main">
       <nav class="admin-tabs">
         <button class="admin-tab active" data-admin-page="overview">Overview</button>
+        <button class="admin-tab" data-admin-page="announcements">Announcements</button>
         <button class="admin-tab" data-admin-page="lessons">Lessons</button>
         <button class="admin-tab" data-admin-page="activities">Activities</button>
         <button class="admin-tab" data-admin-page="students">Students</button>
@@ -91,10 +124,78 @@
                   <option value="3">Term 3</option>
                 </select>
               </label>
-              <label><span>Announcement</span><textarea id="settingAnnouncement"></textarea></label>
+              <div class="admin-info-note">
+                Class announcements are now managed from the <strong>Announcements</strong> tab with section targeting, scheduling, and heart reactions.
+              </div>
               <button class="primary-btn" type="submit">SAVE SETTINGS</button>
             </form>
             <div id="settingsStatus" class="admin-status"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="admin-page-announcements" class="admin-page">
+        <div class="announcement-admin-layout">
+          <article class="panel">
+            <div class="announcement-admin-heading">
+              <div>
+                <p class="section-kicker">CREATE / SCHEDULE</p>
+                <h3 id="announcementFormHeading">Create Announcement</h3>
+                <p>Post to all sections or choose only the sections that should receive it.</p>
+              </div>
+              <span id="announcementEditBadge" class="small-badge hidden">Editing</span>
+            </div>
+
+            <form id="announcementForm" class="admin-form">
+              <label>
+                <span>Announcement Title</span>
+                <input id="announcementTitle" maxlength="120" required placeholder="e.g. Arduino Materials Reminder">
+              </label>
+
+              <label>
+                <span>Message</span>
+                <textarea id="announcementMessage" rows="7" maxlength="3000" required placeholder="Write the announcement here..."></textarea>
+              </label>
+
+              <div class="admin-field">
+                <span class="field-label">Who can see this?</span>
+                <details class="section-picker" id="announcementSectionPicker">
+                  <summary id="announcementSectionSummary">All Sections</summary>
+                  <div id="announcementSectionsOptions" class="section-picker-options"></div>
+                </details>
+              </div>
+
+              <label>
+                <span>Publish Date &amp; Time</span>
+                <input id="announcementPublishAt" type="datetime-local">
+                <small class="field-help">Leave the current time to publish now, or choose a future date/time to schedule automatically.</small>
+              </label>
+
+              <label class="check-row">
+                <input id="announcementPublished" type="checkbox" checked>
+                <span>Enabled for publishing</span>
+              </label>
+
+              <div class="announcement-form-actions">
+                <button id="saveAnnouncementBtn" class="primary-btn" type="submit">SAVE ANNOUNCEMENT</button>
+                <button id="cancelAnnouncementEditBtn" class="secondary-btn hidden" type="button">CANCEL EDIT</button>
+              </div>
+            </form>
+
+            <div id="announcementStatus" class="admin-status"></div>
+          </article>
+
+          <article class="panel">
+            <div class="announcement-admin-heading">
+              <div>
+                <p class="section-kicker">POST HISTORY</p>
+                <h3>Announcements</h3>
+                <p>Scheduled posts become visible automatically when their publish time arrives.</p>
+              </div>
+              <button id="refreshAnnouncementsAdmin" class="mini-btn" type="button">Refresh</button>
+            </div>
+
+            <div id="adminAnnouncementsList" class="admin-list"></div>
           </article>
         </div>
       </section>
@@ -262,42 +363,152 @@
       </section>
 
       <section id="admin-page-sync" class="admin-page">
-        <div class="admin-grid">
-          <article class="panel">
-            <h3>Preview Compliance Sync</h3>
-            <p>Apps Script reads the selected Google Sheet once in a batch and returns a preview. Nothing student-facing changes during preview.</p>
+        <div class="compliance-v2-layout">
 
-            <form id="syncPreviewForm" class="admin-form">
-              <label><span>Section / Sheet Name</span>
-                <select id="syncSheetName" required>
-                  <option value="">Select section</option>
-                  <option value="__custom__">Other sheet name…</option>
+          <article class="panel compliance-v2-source-panel">
+            <div class="compliance-v2-heading">
+              <div>
+                <p class="section-kicker">GOOGLE SHEETS SYNC</p>
+                <h3>Compliance Settings</h3>
+                <p>
+                  Your four Grade 10 sections are detected automatically from the student roster.
+                  Paste each section's Google Sheet link once, save it to Firebase, then just sync whenever needed.
+                </p>
+              </div>
+              <span id="complianceDetectedBadge" class="small-badge">0 sections</span>
+            </div>
+
+            <div class="compliance-v2-top-controls">
+              <label>
+                <span>Term</span>
+                <select id="syncTerm">
+                  <option value="1">TERM 1</option>
+                  <option value="2">TERM 2</option>
+                  <option value="3">TERM 3</option>
                 </select>
+                <small class="compliance-sheet-tab-hint">
+                  Sheet tab to read: <strong id="syncSheetTabLabel">TERM_1</strong>
+                </small>
               </label>
-              <label id="syncSheetCustomWrap" class="hidden">
-                <span>Custom Google Sheet Tab Name</span>
-                <input id="syncSheetCustom" placeholder="Exact sheet tab name">
-              </label>
-              <label><span>Term</span>
-                <select id="syncTerm"><option>1</option><option>2</option><option>3</option></select>
-              </label>
-              <button class="primary-btn" type="submit">PREVIEW SYNC</button>
-            </form>
-            <div id="syncStatus" class="admin-status"></div>
 
-            <div style="margin-top:18px;">
-              <button id="publishSyncBtn" class="primary-btn" disabled>PUBLISH PREVIEW TO FIRESTORE</button>
+              <div class="compliance-v2-select-actions">
+                <span>Sections to Sync</span>
+                <div class="inline-actions">
+                  <button id="complianceSelectAllBtn" class="mini-btn" type="button">Select All</button>
+                  <button id="complianceClearAllBtn" class="mini-btn" type="button">Clear</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="compliance-v2-links-head">
+              <div>
+                <strong>Section Google Sheet Links</strong>
+                <small>
+                  Save one Google Sheet link per section. The app automatically reads TERM_1, TERM_2, or TERM_3 based on the selected term.
+                </small>
+              </div>
+              <span class="compliance-mini-pill">Saved in Firebase</span>
+            </div>
+
+            <div id="complianceSectionSettingsList" class="compliance-v2-section-list"></div>
+
+            <div class="compliance-v2-save-row">
+              <button id="saveComplianceSettingsBtn" class="secondary-btn" type="button">
+                SAVE SETTINGS TO FIREBASE
+              </button>
+              <div id="complianceSetupStatus" class="admin-status"></div>
+            </div>
+
+            <div class="compliance-rule-note">
+              <strong>Compliance rule:</strong>
+              Blank score cell = <b>Missing</b>. A recorded <b>0</b> is a real submitted score and is
+              <b>not Missing</b>. Only tasks with an HPS / Highest Possible Score are active.
             </div>
           </article>
 
-          <article class="panel">
-            <h3>Preview</h3>
-            <p id="syncPreviewNote">No preview loaded yet.</p>
+          <article class="panel compliance-v2-task-panel">
+            <div class="compliance-v2-heading">
+              <div>
+                <p class="section-kicker">SHARED GRADE 10 TASK NAMES</p>
+                <h3>Task Names Students Will See</h3>
+                <p>
+                  Set a task name once for the selected term. The same name is used for
+                  <b>all four Grade 10 sections</b>.
+                </p>
+              </div>
+              <span id="taskMapLabel" class="small-badge">TERM 1 • ALL SECTIONS</span>
+            </div>
+
+            <div class="compliance-task-label-tabs" role="tablist" aria-label="Task groups">
+              <button class="mini-btn active" type="button" data-compliance-task-group="ww">Written Works</button>
+              <button class="mini-btn" type="button" data-compliance-task-group="pt">Performance Tasks</button>
+              <button class="mini-btn" type="button" data-compliance-task-group="ta">Term Assessment</button>
+            </div>
+
+            <div id="complianceTaskNameGrid" class="compliance-v2-task-list"></div>
+
+            <div class="compliance-v2-task-footer">
+              <span>
+                Example: set <b>WW 1 = Arduino Safety Quiz</b> once, and every section will display
+                “Arduino Safety Quiz” for WW 1.
+              </span>
+              <button id="resetComplianceTaskNamesBtn" class="mini-btn" type="button">Reset Current Group</button>
+            </div>
+          </article>
+
+          <article class="panel compliance-v2-sync-panel">
+            <div class="compliance-v2-heading">
+              <div>
+                <p class="section-kicker">QUICK SYNC</p>
+                <h3>Preview / Publish Compliance</h3>
+                <p>
+                  Check one section, several sections, or all four. Student pages never read Google Sheets directly.
+                </p>
+              </div>
+            </div>
+
+            <div class="compliance-v2-sync-actions">
+              <button id="previewComplianceBtn" class="secondary-btn" type="button">
+                PREVIEW CHECKED SECTIONS
+              </button>
+              <button id="publishSyncBtn" class="primary-btn" type="button">
+                SYNC CHECKED SECTIONS &amp; PUBLISH
+              </button>
+            </div>
+
+            <div id="syncStatus" class="admin-status"></div>
+          </article>
+
+          <article class="panel compliance-preview-panel">
+            <div class="compliance-v2-heading">
+              <div>
+                <p class="section-kicker">SYNC PREVIEW</p>
+                <h3>Compliance Preview</h3>
+                <p id="syncPreviewNote">No preview loaded yet.</p>
+              </div>
+            </div>
+            <div id="syncActiveTasks"></div>
             <div id="syncPreviewTable" class="table-wrap"></div>
           </article>
+
         </div>
       </section>
     </main>
   </div>
+
+  <div id="adminHeartsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminHeartsTitle">
+    <div class="modal-backdrop" data-close-hearts></div>
+    <div class="admin-hearts-dialog">
+      <div class="admin-hearts-head">
+        <div>
+          <small>HEART REACTIONS</small>
+          <h3 id="adminHeartsTitle">Announcement</h3>
+        </div>
+        <button class="viewer-close" type="button" data-close-hearts aria-label="Close">×</button>
+      </div>
+      <div id="adminHeartsList" class="admin-hearts-list"></div>
+    </div>
+  </div>
+
 </body>
 </html>

@@ -7,6 +7,7 @@
     profile: null,
     lessons: {},
     activities: {},
+    announcements: {},
     compliance: {}
   };
 
@@ -65,37 +66,129 @@
     }
   }
 
-  async function signInStudent(studentId, password) {
+
+  function configuredAdminEmails() {
+    return Array.isArray(cfg.app?.adminEmails)
+      ? cfg.app.adminEmails
+          .map(value => String(value || "").trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+  }
+
+  async function resolveSignedInAccount(user) {
+    if (!user) return null;
+
+    await user.getIdToken(true);
+
+    const signedInEmail = String(user.email || "").trim().toLowerCase();
+    const isConfiguredAdmin = configuredAdminEmails().includes(signedInEmail);
+
+    // The explicitly configured teacher account can be recognized immediately.
+    if (isConfiguredAdmin) {
+      let adminData = {};
+
+      try {
+        const adminSnap = await db.collection("admins").doc(user.uid).get();
+        if (adminSnap.exists) adminData = adminSnap.data() || {};
+      } catch (_) {}
+
+      return {
+        role: "admin",
+        admin: {
+          uid: user.uid,
+          email: user.email,
+          name: adminData.name || "Teacher Admin",
+          role: "admin",
+          ...adminData
+        }
+      };
+    }
+
+    // Normal student path: one profile read.
+    try {
+      const studentSnap = await db.collection("students").doc(user.uid).get();
+
+      if (studentSnap.exists) {
+        const student = {
+          uid: user.uid,
+          ...studentSnap.data()
+        };
+
+        if (student.active === false) {
+          throw new Error("This student account is currently inactive.");
+        }
+
+        cache.profile = student;
+
+        return {
+          role: "student",
+          profile: student
+        };
+      }
+    } catch (err) {
+      if (
+        err &&
+        err.message === "This student account is currently inactive."
+      ) {
+        throw err;
+      }
+    }
+
+    // Additional admin documents still work even when the email is not in
+    // the small configured allowlist.
+    try {
+      const adminSnap = await db.collection("admins").doc(user.uid).get();
+
+      if (adminSnap.exists) {
+        return {
+          role: "admin",
+          admin: {
+            uid: user.uid,
+            email: user.email,
+            ...adminSnap.data()
+          }
+        };
+      }
+    } catch (_) {}
+
+    return null;
+  }
+
+  async function signInAccount(identifier, password) {
     await init();
 
     if (demoMode) {
-      cache.profile = Object.assign({}, window.G10_DEMO.profile, {
-        studentId: studentId || window.G10_DEMO.profile.studentId
-      });
-      return cache.profile;
+      const student = await signInStudent(identifier, password);
+      return {
+        role: "student",
+        profile: student
+      };
     }
 
-    const email = studentId.includes("@") ? studentId.trim() : studentIdToEmail(studentId);
+    const rawIdentifier = String(identifier || "").trim();
+
+    if (!rawIdentifier) {
+      throw new Error("Enter your Student ID or Admin Email.");
+    }
+
+    const email = rawIdentifier.includes("@")
+      ? rawIdentifier.toLowerCase()
+      : studentIdToEmail(rawIdentifier);
+
     const credential = await auth.signInWithEmailAndPassword(email, password);
-    const snap = await db.collection("students").doc(credential.user.uid).get();
+    const account = await resolveSignedInAccount(credential.user);
 
-    if (!snap.exists) {
+    if (!account) {
       await auth.signOut();
-      throw new Error("This account exists, but no student profile is assigned yet.");
+      throw new Error("This account is not assigned as a student or administrator.");
     }
 
-    const profile = { uid: credential.user.uid, ...snap.data() };
-    if (profile.active === false) {
-      await auth.signOut();
-      throw new Error("This student account is currently inactive.");
-    }
-
-    cache.profile = profile;
-    return profile;
+    return account;
   }
 
-  async function restoreStudentSession() {
+  async function restoreAccountSession() {
     await init();
+
     if (demoMode || !auth) return null;
 
     const currentUser = await new Promise(resolve => {
@@ -107,12 +200,44 @@
 
     if (!currentUser) return null;
 
-    const snap = await db.collection("students").doc(currentUser.uid).get();
-    if (!snap.exists) return null;
-
-    cache.profile = { uid: currentUser.uid, ...snap.data() };
-    return cache.profile;
+    return await resolveSignedInAccount(currentUser);
   }
+
+  async function signInStudent(studentId, password) {
+    await init();
+
+    if (demoMode) {
+      cache.profile = Object.assign({}, window.G10_DEMO.profile, {
+        studentId: studentId || window.G10_DEMO.profile.studentId
+      });
+      return cache.profile;
+    }
+
+    const account = await signInAccount(studentId, password);
+
+    if (account.role !== "student" || !account.profile) {
+      await auth.signOut();
+      throw new Error("This is an administrator account. Use the main login page.");
+    }
+
+    return account.profile;
+  }
+
+
+  async function restoreStudentSession() {
+    const account = await restoreAccountSession();
+    return account && account.role === "student"
+      ? account.profile
+      : null;
+  }
+
+  async function restoreAdminSession() {
+    const account = await restoreAccountSession();
+    return account && account.role === "admin"
+      ? account.admin
+      : null;
+  }
+
 
   async function getSettings(force = false) {
     await init();
@@ -140,6 +265,60 @@
     return allowed.includes(section);
   }
 
+
+  async function loadPublishedForSection(collectionName, term, section) {
+    const feedCollection = collectionName === "activities"
+      ? "activityFeeds"
+      : "lessonFeeds";
+
+    const cleanSection = String(section || "").trim();
+
+    const globalPromise = db.collection(feedCollection)
+      .doc("ALL_SECTIONS")
+      .collection("items")
+      .get();
+
+    const sectionPromise = cleanSection
+      ? db.collection(feedCollection)
+          .doc(cleanSection)
+          .collection("items")
+          .get()
+      : Promise.resolve(null);
+
+    const results = await Promise.allSettled([globalPromise, sectionPromise]);
+    const docsById = new Map();
+    let successfulQueries = 0;
+    let firstError = null;
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        if (!result.value) continue;
+        successfulQueries++;
+
+        result.value.docs.forEach(doc => {
+          const item = { id: doc.id, ...doc.data() };
+
+          // Feeds contain only relevant-section metadata. Filter the selected
+          // term locally so the query needs no composite index and no
+          // field-based Security Rules.
+          if (Number(item.term) !== Number(term)) return;
+          if (item.published !== true) return;
+
+          docsById.set(doc.id, item);
+        });
+      } else if (!firstError) {
+        firstError = result.reason;
+      }
+    }
+
+    if (successfulQueries > 0) {
+      return Array.from(docsById.values());
+    }
+
+    throw firstError || new Error("Could not load published materials.");
+  }
+
+
   async function getLessons(term, section, force = false) {
     await init();
     const key = `${term}|${section || ""}`;
@@ -154,15 +333,7 @@
     } else {
       // Only the selected term + published metadata is loaded.
       // The actual Drive file is NOT loaded here.
-      const snap = await db.collection("lessons")
-        .where("term", "==", Number(term))
-        .where("published", "==", true)
-        .where("allowedSections", "array-contains-any", [section, "*"])
-        .limit(50)
-        .get();
-
-      rows = snap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }));
+      rows = await loadPublishedForSection("lessons", term, section);
     }
 
     rows.sort((a, b) => (Number(a.order) || 9999) - (Number(b.order) || 9999));
@@ -182,15 +353,7 @@
         .filter(x => Number(x.term) === Number(term) && x.published)
         .filter(x => allowedForSection(x, section));
     } else {
-      const snap = await db.collection("activities")
-        .where("term", "==", Number(term))
-        .where("published", "==", true)
-        .where("allowedSections", "array-contains-any", [section, "*"])
-        .limit(50)
-        .get();
-
-      rows = snap.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }));
+      rows = await loadPublishedForSection("activities", term, section);
     }
 
     rows.sort((a, b) => (Number(a.order) || 9999) - (Number(b.order) || 9999));
@@ -198,9 +361,190 @@
     return rows;
   }
 
-  async function getCompliance(uid, term, force = false) {
+
+  function firestoreTimestampMillis(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    if (typeof value.seconds === "number") return value.seconds * 1000;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  }
+
+  async function loadAnnouncementFeed(section) {
+    const cleanSection = String(section || "").trim();
+    const now = firebase.firestore.Timestamp.now();
+
+    const queryFor = sectionKey => db
+      .collection("announcementFeeds")
+      .doc(sectionKey)
+      .collection("items")
+      .where("publishAt", "<=", now)
+      .get();
+
+    const globalPromise = queryFor("ALL_SECTIONS");
+    const sectionPromise = cleanSection
+      ? queryFor(cleanSection)
+      : Promise.resolve(null);
+
+    const results = await Promise.allSettled([globalPromise, sectionPromise]);
+    const docsById = new Map();
+    let successfulQueries = 0;
+    let firstError = null;
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        if (!result.value) continue;
+        successfulQueries++;
+
+        result.value.docs.forEach(doc => {
+          const item = { id: doc.id, ...doc.data() };
+          docsById.set(doc.id, item);
+        });
+      } else if (!firstError) {
+        firstError = result.reason;
+      }
+    }
+
+    if (!successfulQueries) {
+      throw firstError || new Error("Could not load announcements.");
+    }
+
+    return Array.from(docsById.values())
+      .sort((a, b) =>
+        firestoreTimestampMillis(b.publishAt) -
+        firestoreTimestampMillis(a.publishAt)
+      );
+  }
+
+  async function getAnnouncements(section, force = false) {
     await init();
-    const key = `${uid}|${term}`;
+    const key = String(section || "").trim() || "ALL";
+
+    if (!force && cache.announcements[key]) {
+      return cache.announcements[key];
+    }
+
+    if (demoMode) {
+      cache.announcements[key] = [];
+      return [];
+    }
+
+    const rows = await loadAnnouncementFeed(section);
+    cache.announcements[key] = rows;
+    return rows;
+  }
+
+  async function getAnnouncementHeartStates(announcementIds) {
+    await init();
+
+    const ids = Array.from(new Set(
+      (Array.isArray(announcementIds) ? announcementIds : [])
+        .map(value => String(value || "").trim())
+        .filter(Boolean)
+    ));
+
+    if (!ids.length) return {};
+
+    if (demoMode || !auth?.currentUser) {
+      return Object.fromEntries(ids.map(id => [id, false]));
+    }
+
+    const uid = auth.currentUser.uid;
+    const results = await Promise.all(ids.map(async announcementId => {
+      try {
+        const snap = await db
+          .collection("announcementHearts")
+          .doc(announcementId)
+          .collection("hearts")
+          .doc(uid)
+          .get();
+
+        return [announcementId, snap.exists];
+      } catch (_) {
+        return [announcementId, false];
+      }
+    }));
+
+    return Object.fromEntries(results);
+  }
+
+  async function toggleAnnouncementHeart(announcement) {
+    await init();
+
+    if (demoMode) {
+      throw new Error("Heart reactions require the live Firebase portal.");
+    }
+
+    if (!auth?.currentUser || !cache.profile) {
+      throw new Error("Your student session expired. Please sign in again.");
+    }
+
+    const announcementId = String(announcement?.id || "").trim();
+    if (!announcementId) {
+      throw new Error("Announcement ID is missing.");
+    }
+
+    const uid = auth.currentUser.uid;
+    const heartRef = db
+      .collection("announcementHearts")
+      .doc(announcementId)
+      .collection("hearts")
+      .doc(uid);
+
+    const existing = await heartRef.get();
+
+    if (existing.exists) {
+      await heartRef.delete();
+      return false;
+    }
+
+    const profileData = cache.profile || {};
+    const notificationId = `${announcementId}__${uid}`;
+    const notificationRef = db
+      .collection("adminNotifications")
+      .doc(notificationId);
+
+    const batch = db.batch();
+
+    batch.set(heartRef, {
+      announcementId,
+      studentUid: uid,
+      studentId: String(profileData.studentId || ""),
+      fullName: String(profileData.fullName || profileData.studentId || "Student"),
+      section: String(profileData.section || ""),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    batch.set(notificationRef, {
+      type: "announcement-heart",
+      announcementId,
+      announcementTitle: String(announcement?.title || "Announcement"),
+      studentUid: uid,
+      studentId: String(profileData.studentId || ""),
+      fullName: String(profileData.fullName || profileData.studentId || "Student"),
+      section: String(profileData.section || ""),
+      seen: false,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    await batch.commit();
+    return true;
+  }
+
+  async function getCompliance(studentId, term, force = false) {
+    await init();
+
+    const normalizedId = normalizeStudentId(studentId);
+    if (!normalizedId) {
+      return {
+        term: Number(term),
+        lastUpdated: null,
+        tasks: [],
+        summary: { complete: 0, missing: 0, total: 0 }
+      };
+    }
+
+    const key = `${normalizedId}|${term}`;
     if (!force && cache.compliance[key]) return cache.compliance[key];
 
     if (demoMode) {
@@ -209,24 +553,41 @@
       return result;
     }
 
-    const snap = await db
+    const ref = db
       .collection("studentCompliance")
-      .doc(uid)
+      .doc(normalizedId)
       .collection("terms")
-      .doc(`term${Number(term)}`)
-      .get();
+      .doc(`term${Number(term)}`);
+
+    let snap;
+
+    // Compliance is a published teacher snapshot, so prefer a fresh server
+    // read. If the network is unavailable, Firestore may still use its
+    // regular local cache as a fallback.
+    try {
+      snap = await ref.get({ source: "server" });
+    } catch (serverError) {
+      snap = await ref.get();
+    }
 
     const result = snap.exists
       ? snap.data()
-      : { term: Number(term), lastUpdated: null, tasks: [] };
+      : {
+          term: Number(term),
+          lastUpdated: null,
+          tasks: [],
+          summary: { complete: 0, missing: 0, total: 0 }
+        };
 
     cache.compliance[key] = result;
     return result;
   }
 
+
   function clearPageCache(type) {
     if (type === "lessons") cache.lessons = {};
     if (type === "activities") cache.activities = {};
+    if (type === "announcements") cache.announcements = {};
     if (type === "compliance") cache.compliance = {};
     if (type === "settings") cache.settings = null;
   }
@@ -236,7 +597,43 @@
     cache.profile = null;
     cache.lessons = {};
     cache.activities = {};
+    cache.announcements = {};
     cache.compliance = {};
+  }
+
+
+  async function changeStudentPassword(newPassword) {
+    await init();
+
+    if (demoMode) {
+      cache.profile = { ...(cache.profile || {}), mustChangePassword: false };
+      return cache.profile;
+    }
+
+    if (!auth || !auth.currentUser) {
+      throw new Error("Your login session expired. Please sign in again.");
+    }
+
+    const password = String(newPassword || "");
+    if (password.length < 6) {
+      throw new Error("New password must contain at least 6 characters.");
+    }
+
+    await auth.currentUser.updatePassword(password);
+
+    await db.collection("students").doc(auth.currentUser.uid).update({
+      mustChangePassword: false,
+      passwordChangedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    cache.profile = {
+      ...(cache.profile || {}),
+      uid: auth.currentUser.uid,
+      mustChangePassword: false
+    };
+
+    return cache.profile;
   }
 
   async function logout() {
@@ -273,19 +670,16 @@
   }
 
   async function signInAdmin(email, password) {
-    await init();
-    if (demoMode) throw new Error("Admin live mode requires the hosted app, not file:// demo mode.");
+    const account = await signInAccount(email, password);
 
-    const credential = await auth.signInWithEmailAndPassword(email.trim(), password);
-    const adminSnap = await db.collection("admins").doc(credential.user.uid).get();
-
-    if (!adminSnap.exists) {
-      await auth.signOut();
-      throw new Error("Signed in, but this Firebase user is not listed in the admins collection.");
+    if (account.role !== "admin" || !account.admin) {
+      if (!demoMode && auth) await auth.signOut();
+      throw new Error("This Firebase account is not authorized as an administrator.");
     }
 
-    return { uid: credential.user.uid, email: credential.user.email, ...adminSnap.data() };
+    return account.admin;
   }
+
 
   function getFirebaseHandles() {
     return { firebaseApp, auth, db, demoMode };
@@ -294,18 +688,26 @@
   window.G10DataService = {
     init,
     isDemo: () => demoMode,
+    signInAccount,
     signInStudent,
+    restoreAccountSession,
     restoreStudentSession,
+    restoreAdminSession,
     getSettings,
     getLessons,
     getActivities,
+    getAnnouncements,
+    getAnnouncementHeartStates,
+    toggleAnnouncementHeart,
     getCompliance,
     clearPageCache,
     clearAllCache,
+    changeStudentPassword,
     logout,
     drivePreviewUrl,
     driveImageUrl,
     extractDriveFileId,
+    normalizeStudentId,
     studentIdToEmail,
     signInAdmin,
     getFirebaseHandles

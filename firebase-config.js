@@ -16,14 +16,15 @@ window.G10_CONFIG = {
   },
 
   app: {
-    name: "Grade 10 Arduino Hub",
+    name: "MCSian ICT 10 Portal",
     schoolYear: "2026-2027",
-    defaultTerm: 1
+    defaultTerm: 1,
+    adminEmails: ["teacheradmin@gmail.com"]
   },
 
   /*
     Paste the deployed Google Apps Script Web App URL here later.
     Leave blank for now. Student pages do not need Apps Script.
   */
-  appsScriptUrl: ""
+  appsScriptUrl: "https://script.google.com/macros/s/AKfycbzCgHC9VbNRz_ozSOAFdC5yTSZAWpKFLDTlKV2IAkddIZGG_il9LzQlNIcsptHwAo5v/exec"
 };
