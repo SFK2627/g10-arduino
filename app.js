@@ -11,6 +11,8 @@
   const loaded = { announcements: false, lessons: false, activities: false, compliance: false };
   const announcementById = new Map();
   const announcementHeartState = new Map();
+  const announcementReadState = new Map();
+  let currentAnnouncementRows = [];
 
   document.addEventListener("DOMContentLoaded", boot);
 
@@ -51,6 +53,18 @@
     $("#logoutBtn").addEventListener("click", logout);
     $("#passwordChangeForm").addEventListener("submit", handlePasswordChange);
     $("#passwordChangeLogoutBtn").addEventListener("click", logoutFromPasswordChange);
+
+    $("#dashboardAnnouncementAttachment").addEventListener("click", () => {
+      const button = $("#dashboardAnnouncementAttachment");
+      if (!button.dataset.fileId) return;
+
+      openViewer({
+        title: button.dataset.title || "Announcement attachment",
+        fileId: button.dataset.fileId,
+        fileType: button.dataset.fileType || "",
+        kind: "announcement"
+      });
+    });
 
     $$(".nav-btn, .mobile-nav-btn, .goto-page").forEach(btn => {
       btn.addEventListener("click", () => navigate(btn.dataset.page));
@@ -315,16 +329,96 @@
     });
   }
 
+  function latestAnnouncementByPublishDate(rows) {
+    return (Array.isArray(rows) ? rows : [])
+      .slice()
+      .sort((a, b) => {
+        const aTime = announcementDateValue(a.publishAt)?.getTime() || 0;
+        const bTime = announcementDateValue(b.publishAt)?.getTime() || 0;
+        return bTime - aTime;
+      })[0] || null;
+  }
+
+  async function hydrateAnnouncementReads(posts) {
+    const ids = await G10DataService.getAnnouncementReadIds();
+    const readIds = new Set(ids);
+
+    (Array.isArray(posts) ? posts : []).forEach(post => {
+      announcementReadState.set(post.id, readIds.has(post.id));
+    });
+
+    updateAnnouncementUnreadBadges(posts);
+  }
+
+  function unreadAnnouncementCount(posts = currentAnnouncementRows) {
+    return (Array.isArray(posts) ? posts : [])
+      .filter(post => announcementReadState.get(post.id) !== true)
+      .length;
+  }
+
+  function updateAnnouncementUnreadBadges(posts = currentAnnouncementRows) {
+    const count = unreadAnnouncementCount(posts);
+
+    const side = $("#announcementUnreadBadgeSide");
+    const mobile = $("#announcementUnreadBadgeMobile");
+
+    [side, mobile].forEach(badge => {
+      if (!badge) return;
+      badge.textContent = count > 99 ? "99+" : String(count);
+      badge.classList.toggle("hidden", count === 0);
+    });
+
+    const latest = latestAnnouncementByPublishDate(posts);
+    const dashboardNew = $("#dashboardAnnouncementNewBadge");
+
+    if (dashboardNew) {
+      const latestUnread = latest &&
+        announcementReadState.get(latest.id) !== true;
+
+      dashboardNew.classList.toggle("hidden", !latestUnread);
+    }
+  }
+
+  async function markCurrentAnnouncementsRead(posts) {
+    const unread = (Array.isArray(posts) ? posts : [])
+      .filter(post => announcementReadState.get(post.id) !== true);
+
+    if (!unread.length) return;
+
+    try {
+      await G10DataService.markAnnouncementsRead(unread);
+      unread.forEach(post => announcementReadState.set(post.id, true));
+
+      $$(".announcement-new-badge[data-announcement-id]").forEach(badge => {
+        if (announcementReadState.get(badge.dataset.announcementId) === true) {
+          badge.classList.add("hidden");
+        }
+      });
+
+      updateAnnouncementUnreadBadges(currentAnnouncementRows);
+    } catch (err) {
+      console.warn("Could not mark announcements as read:", err);
+    }
+  }
+
   function renderDashboardAnnouncement(post) {
     const card = $("#dashboardAnnouncementCard");
     if (!card) return;
+
+    const attachment = $("#dashboardAnnouncementAttachment");
 
     if (!post) {
       card.classList.add("hidden");
       $("#dashboardAnnouncementTitle").textContent = "";
       $("#dashboardAnnouncementMessage").textContent = "";
       $("#dashboardAnnouncementMeta").textContent = "";
+      $("#dashboardAnnouncementNewBadge").classList.add("hidden");
       $("#dashboardAnnouncementHeart").removeAttribute("data-announcement-id");
+
+      attachment.classList.add("hidden");
+      attachment.removeAttribute("data-file-id");
+      attachment.removeAttribute("data-file-type");
+      attachment.removeAttribute("data-title");
       return;
     }
 
@@ -345,6 +439,22 @@
     heart.dataset.announcementId = post.id;
     updateHeartButtons(post.id, announcementHeartState.get(post.id) === true);
 
+    const isUnread = announcementReadState.get(post.id) !== true;
+    $("#dashboardAnnouncementNewBadge").classList.toggle("hidden", !isUnread);
+
+    if (post.fileId) {
+      attachment.dataset.fileId = post.fileId;
+      attachment.dataset.fileType = post.fileType || "";
+      attachment.dataset.title = post.fileName || `${post.title || "Announcement"} attachment`;
+      attachment.textContent = post.fileName
+        ? `Open: ${post.fileName}`
+        : "Open attachment";
+      attachment.classList.remove("hidden");
+    } else {
+      attachment.classList.add("hidden");
+      attachment.removeAttribute("data-file-id");
+    }
+
     card.classList.remove("hidden");
   }
 
@@ -359,11 +469,21 @@
         force
       );
 
-      if (!rows.length) return;
+      currentAnnouncementRows = rows;
 
-      const latest = rows[0];
-      await hydrateAnnouncementHearts([latest]);
+      if (!rows.length) {
+        updateAnnouncementUnreadBadges([]);
+        return;
+      }
+
+      await Promise.all([
+        hydrateAnnouncementHearts(rows),
+        hydrateAnnouncementReads(rows)
+      ]);
+
+      const latest = latestAnnouncementByPublishDate(rows);
       renderDashboardAnnouncement(latest);
+      updateAnnouncementUnreadBadges(rows);
     } catch (err) {
       console.warn("Could not refresh dashboard announcement:", err);
     }
@@ -372,12 +492,42 @@
   function announcementPostHtml(post) {
     const publishDate = announcementDateValue(post.publishAt);
     const hearted = announcementHeartState.get(post.id) === true;
+    const unread = announcementReadState.get(post.id) !== true;
+
+    const pinnedBadge = post.pinned === true
+      ? `<span class="announcement-pinned-badge">PINNED</span>`
+      : "";
+
+    const newBadge = `
+      <span
+        class="announcement-new-badge ${unread ? "" : "hidden"}"
+        data-announcement-id="${escapeAttr(post.id)}">
+        NEW
+      </span>
+    `;
+
+    const attachment = post.fileId
+      ? `
+        <button
+          class="secondary-small view-file announcement-attachment-btn"
+          data-kind="announcement"
+          data-title="${escapeAttr(post.fileName || `${post.title || "Announcement"} attachment`)}"
+          data-file-id="${escapeAttr(post.fileId)}"
+          data-file-type="${escapeAttr(post.fileType || "")}">
+          ${escapeHtml(post.fileName ? `Open: ${post.fileName}` : "Open attachment")}
+        </button>
+      `
+      : "";
 
     return `
-      <article class="announcement-post">
+      <article class="announcement-post ${post.pinned === true ? "pinned" : ""}">
         <div class="announcement-post-head">
           <div>
-            <div class="card-kicker">ANNOUNCEMENT</div>
+            <div class="announcement-post-badges">
+              <div class="card-kicker">ANNOUNCEMENT</div>
+              ${pinnedBadge}
+              ${newBadge}
+            </div>
             <h3>${escapeHtml(post.title || "Announcement")}</h3>
           </div>
           <span class="announcement-date">
@@ -386,6 +536,8 @@
         </div>
 
         <p class="announcement-post-message">${escapeHtml(post.message || "")}</p>
+
+        ${attachment ? `<div class="announcement-attachment-row">${attachment}</div>` : ""}
 
         <div class="announcement-post-footer">
           <small>${escapeHtml(post.createdByName || "ICT Teacher")}</small>
@@ -412,6 +564,7 @@
         force
       );
 
+      currentAnnouncementRows = rows;
       loaded.announcements = true;
 
       if (!rows.length) {
@@ -420,16 +573,32 @@
           "There are no published announcements for your section right now."
         );
         renderDashboardAnnouncement(null);
+        updateAnnouncementUnreadBadges([]);
         return;
       }
 
-      await hydrateAnnouncementHearts(rows);
+      await Promise.all([
+        hydrateAnnouncementHearts(rows),
+        hydrateAnnouncementReads(rows)
+      ]);
 
       target.innerHTML = rows
         .map(announcementPostHtml)
         .join("");
 
-      renderDashboardAnnouncement(rows[0]);
+      bindFileButtons();
+
+      const latest = latestAnnouncementByPublishDate(rows);
+      renderDashboardAnnouncement(latest);
+      updateAnnouncementUnreadBadges(rows);
+
+      // Opening the Announcements page counts as reading the visible posts.
+      // A short delay lets the student actually see the NEW markers first.
+      setTimeout(() => {
+        if (currentPage === "announcements") {
+          markCurrentAnnouncementsRead(rows);
+        }
+      }, 900);
     } catch (err) {
       target.innerHTML = errorState(err);
     }
@@ -823,7 +992,12 @@
     await G10DataService.logout();
     profile = null;
     settings = null;
-    loaded.lessons = loaded.activities = loaded.compliance = false;
+    loaded.announcements = loaded.lessons = loaded.activities = loaded.compliance = false;
+    currentAnnouncementRows = [];
+    announcementById.clear();
+    announcementHeartState.clear();
+    announcementReadState.clear();
+    updateAnnouncementUnreadBadges([]);
     $("#appView").classList.add("hidden");
     $("#loginView").classList.remove("hidden");
     $("#password").value = "";

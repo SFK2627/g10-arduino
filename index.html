@@ -100,7 +100,11 @@
 
       <nav class="side-nav" aria-label="Main navigation">
         <button class="nav-btn active" data-page="dashboard"><span>01</span> Dashboard</button>
-        <button class="nav-btn" data-page="announcements"><span>02</span> Announcements</button>
+        <button class="nav-btn" data-page="announcements">
+          <span>02</span>
+          <span class="nav-label">Announcements</span>
+          <span id="announcementUnreadBadgeSide" class="announcement-unread-badge hidden">0</span>
+        </button>
         <button class="nav-btn" data-page="lessons"><span>03</span> Lessons</button>
         <button class="nav-btn" data-page="activities"><span>04</span> Activities</button>
         <button class="nav-btn" data-page="compliance"><span>05</span> Compliance</button>
@@ -170,15 +174,23 @@
         <article id="dashboardAnnouncementCard" class="announcement-card portal-announcement-preview hidden">
           <div class="announcement-mark">!</div>
           <div class="announcement-preview-body">
-            <div class="card-kicker">LATEST ANNOUNCEMENT</div>
+            <div class="announcement-preview-kicker-row">
+              <div class="card-kicker">LATEST ANNOUNCEMENT</div>
+              <span id="dashboardAnnouncementNewBadge" class="announcement-new-badge hidden">NEW</span>
+            </div>
             <h3 id="dashboardAnnouncementTitle"></h3>
             <p id="dashboardAnnouncementMessage" class="announcement-preview-message"></p>
             <small id="dashboardAnnouncementMeta" class="announcement-meta"></small>
             <div class="announcement-actions">
-              <button id="dashboardAnnouncementHeart" class="announcement-heart-btn" type="button">
+              <div class="announcement-action-left">
+                <button id="dashboardAnnouncementHeart" class="announcement-heart-btn" type="button">
                 <span class="heart-symbol">♥</span>
-                <span class="heart-label">Heart</span>
-              </button>
+                  <span class="heart-label">Heart</span>
+                </button>
+                <button id="dashboardAnnouncementAttachment" class="secondary-small hidden" type="button">
+                  Open attachment
+                </button>
+              </div>
               <button class="text-link goto-page" data-page="announcements" type="button">View all announcements →</button>
             </div>
           </div>
@@ -311,7 +323,10 @@
 
     <nav class="mobile-nav" aria-label="Mobile navigation">
       <button class="mobile-nav-btn active" data-page="dashboard">Home</button>
-      <button class="mobile-nav-btn" data-page="announcements">Posts</button>
+      <button class="mobile-nav-btn mobile-announcement-nav" data-page="announcements">
+        Posts
+        <span id="announcementUnreadBadgeMobile" class="announcement-unread-badge mobile-badge hidden">0</span>
+      </button>
       <button class="mobile-nav-btn" data-page="lessons">Lessons</button>
       <button class="mobile-nav-btn" data-page="activities">Tasks</button>
       <button class="mobile-nav-btn" data-page="compliance">Status</button>

@@ -3901,3 +3901,249 @@ html.phone-landscape-blocked body {
     gap: .14em;
   }
 }
+
+
+/* ============================================================
+   v7 — Announcement unread/pin/attachment + Admin stats
+   ============================================================ */
+
+.nav-btn[data-page="announcements"] {
+  position: relative;
+}
+
+.nav-btn .nav-label {
+  min-width: 0;
+}
+
+.announcement-unread-badge {
+  min-width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 6px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: #d7192d;
+  color: #fff;
+  font-size: .58rem;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.mobile-announcement-nav {
+  position: relative;
+}
+
+.announcement-unread-badge.mobile-badge {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin: 0;
+  border: 2px solid #fff;
+  font-size: .5rem;
+}
+
+.announcement-preview-kicker-row,
+.announcement-post-badges {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.announcement-new-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #d7192d;
+  color: #fff;
+  font-size: .55rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.announcement-pinned-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 0 8px;
+  border: 1px solid #202328;
+  border-radius: 999px;
+  background: #202328;
+  color: #fff;
+  font-size: .55rem;
+  font-weight: 950;
+  letter-spacing: .07em;
+}
+
+.announcement-attachment-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f1f2f4;
+  color: #5d626a;
+  font-size: .54rem;
+  font-weight: 900;
+  letter-spacing: .05em;
+}
+
+.announcement-post.pinned {
+  border-color: #cfd2d7;
+  box-shadow: inset 4px 0 0 #202328, 0 8px 26px rgba(18,19,22,.05);
+}
+
+.announcement-action-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.announcement-attachment-row {
+  margin-top: 15px;
+  padding: 12px;
+  border: 1px solid #e1e3e7;
+  border-radius: 11px;
+  background: #f8f9fa;
+}
+
+.announcement-attachment-btn {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.announcement-attachment-box {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #e0e2e6;
+  border-radius: 12px;
+  background: #f8f9fa;
+}
+
+.attachment-existing {
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: #fff;
+  color: #454950;
+  font-size: .69rem;
+  font-weight: 750;
+}
+
+/* Admin dashboard */
+.admin-dashboard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.admin-dashboard-head h3 {
+  margin: 3px 0 4px;
+}
+
+.admin-dashboard-head p {
+  margin: 0;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.admin-stat-card {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid #e0e2e6;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 7px 24px rgba(20,22,26,.04);
+}
+
+.admin-stat-card.warning {
+  border-left: 4px solid #d7192d;
+}
+
+.admin-stat-card.scheduled {
+  border-left: 4px solid #df9b16;
+}
+
+.admin-stat-card.heart {
+  border-left: 4px solid #cf1830;
+}
+
+.admin-stat-label {
+  display: block;
+  color: #676c74;
+  font-size: .6rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+}
+
+.admin-stat-card strong {
+  display: block;
+  margin-top: 8px;
+  color: #17191d;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1;
+}
+
+.admin-stat-card small {
+  display: block;
+  margin-top: 8px;
+  color: #7b8088;
+  font-size: .65rem;
+  line-height: 1.35;
+}
+
+.admin-settings-panel {
+  max-width: 720px;
+}
+
+@media (max-width: 980px) {
+  .admin-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .admin-dashboard-head {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .admin-stat-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .admin-stat-card {
+    padding: 13px;
+  }
+
+  .admin-stat-card strong {
+    font-size: 1.75rem;
+  }
+
+  .announcement-action-left {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .admin-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}

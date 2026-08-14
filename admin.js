@@ -15,6 +15,7 @@
   let activeComplianceTaskGroup = "ww";
 
   let editingAnnouncementId = null;
+  let editingAnnouncementAttachment = null;
   let adminNotificationUnsubscribe = null;
   let currentUnreadNotifications = [];
 
@@ -64,6 +65,7 @@
     $("#announcementForm").addEventListener("submit", saveAnnouncement);
     $("#cancelAnnouncementEditBtn").addEventListener("click", resetAnnouncementForm);
     $("#refreshAnnouncementsAdmin").addEventListener("click", loadAdminAnnouncements);
+    $("#refreshAdminDashboard").addEventListener("click", loadAdminDashboardStats);
     $("#adminNotificationBtn").addEventListener("click", toggleAdminNotificationPanel);
     $("#markNotificationsReadBtn").addEventListener("click", markAllAdminNotificationsRead);
     $$("[data-close-hearts]").forEach(el => {
@@ -119,6 +121,7 @@
     await loadSectionDirectory();
     resetAnnouncementForm();
     startAdminNotificationListener();
+    await loadAdminDashboardStats();
   }
 
   async function adminLogout() {
@@ -139,6 +142,7 @@
     $$(".admin-page").forEach(p => p.classList.remove("active"));
     $(`#admin-page-${page}`).classList.add("active");
 
+    if (page === "overview") await loadAdminDashboardStats();
     if (page === "announcements") await loadAdminAnnouncements();
     if (page === "lessons") await loadAdminLessons();
     if (page === "activities") await loadAdminActivities();
@@ -316,6 +320,7 @@
       };
       await db.collection("settings").doc("main").set(data, { merge: true });
       setStatus("#settingsStatus", "Settings saved.", true);
+      await loadAdminDashboardStats();
     } catch (err) {
       setStatus("#settingsStatus", err.message, false);
     }
@@ -329,6 +334,122 @@
     return items.length ? items : ["*"];
   }
 
+
+  function setAdminStat(id, value) {
+    const target = $(id);
+    if (target) target.textContent = String(value);
+  }
+
+  async function countMissingComplianceForTerm(term) {
+    const students = cachedStudentProfiles.length
+      ? cachedStudentProfiles
+      : (await db.collection("students").get()).docs
+          .map(doc => ({ uid: doc.id, ...doc.data() }));
+
+    const activeStudents = students.filter(student => student.active !== false);
+    let count = 0;
+
+    // Direct document reads avoid requiring a collection-group index.
+    for (let i = 0; i < activeStudents.length; i += 25) {
+      const batchStudents = activeStudents.slice(i, i + 25);
+
+      const snapshots = await Promise.all(
+        batchStudents.map(student => {
+          const studentId = G10DataService.normalizeStudentId(student.studentId);
+          if (!studentId) return Promise.resolve(null);
+
+          return db.collection("studentCompliance")
+            .doc(studentId)
+            .collection("terms")
+            .doc(`term${term}`)
+            .get()
+            .catch(() => null);
+        })
+      );
+
+      snapshots.forEach(snap => {
+        if (!snap || !snap.exists) return;
+        const data = snap.data() || {};
+        if (Number(data.summary?.missing || 0) > 0) count++;
+      });
+    }
+
+    return count;
+  }
+
+  async function loadAdminDashboardStats() {
+    const ids = [
+      "#statTotalStudents",
+      "#statPublishedLessons",
+      "#statActiveActivities",
+      "#statMissingCompliance",
+      "#statScheduledAnnouncements",
+      "#statNewHearts"
+    ];
+
+    ids.forEach(id => setAdminStat(id, "…"));
+
+    try {
+      const term = Number($("#settingCurrentTerm")?.value || 1);
+      const now = Date.now();
+
+      const [
+        studentsResult,
+        lessonsResult,
+        activitiesResult,
+        announcementsResult,
+        heartsResult
+      ] = await Promise.all([
+        db.collection("students").get(),
+        db.collection("lessons").where("published", "==", true).get(),
+        db.collection("activities").where("published", "==", true).get(),
+        db.collection("announcements").where("published", "==", true).get(),
+        db.collection("adminNotifications").where("seen", "==", false).get()
+      ]);
+
+      cachedStudentProfiles = studentsResult.docs
+        .map(doc => ({ uid: doc.id, ...doc.data() }));
+
+      const activeStudents = cachedStudentProfiles
+        .filter(student => student.active !== false);
+
+      const activeActivities = activitiesResult.docs
+        .map(doc => doc.data())
+        .filter(item => Number(item.term || 0) === term)
+        .length;
+
+      const scheduled = announcementsResult.docs
+        .map(doc => doc.data())
+        .filter(item => {
+          const date = announcementTimestampDate(item.publishAt);
+          return date && date.getTime() > now;
+        })
+        .length;
+
+      setAdminStat("#statTotalStudents", activeStudents.length);
+      setAdminStat("#statPublishedLessons", lessonsResult.size);
+      setAdminStat("#statActiveActivities", activeActivities);
+      setAdminStat("#statScheduledAnnouncements", scheduled);
+      setAdminStat("#statNewHearts", heartsResult.size);
+
+      $("#statActiveActivitiesNote").textContent = `Term ${term} published activities`;
+      $("#statMissingComplianceNote").textContent = `Term ${term} students with missing tasks`;
+
+      try {
+        const missingCount = await countMissingComplianceForTerm(term);
+        setAdminStat("#statMissingCompliance", missingCount);
+      } catch (err) {
+        console.warn("Could not calculate missing compliance count:", err);
+        setAdminStat("#statMissingCompliance", "—");
+      }
+    } catch (err) {
+      console.warn("Admin dashboard count load failed:", err);
+      ids.forEach(id => {
+        const node = $(id);
+        if (node && node.textContent === "…") node.textContent = "—";
+      });
+    }
+  }
 
   async function callAppsScriptSecure(payload) {
     const url = String(G10_CONFIG.appsScriptUrl || "").trim();
@@ -438,6 +559,11 @@
       allowedSections: payload.allowedSections || ["*"],
       published: true,
       publishAt: payload.publishAt,
+      pinned: payload.pinned === true,
+      fileId: payload.fileId || "",
+      fileName: payload.fileName || "",
+      fileType: payload.fileType || "",
+      fileSize: payload.fileSize || null,
       createdByName: payload.createdByName || "ICT Teacher",
       sourceId: announcementId,
       feedVersion: 1,
@@ -513,12 +639,20 @@
 
   function resetAnnouncementForm() {
     editingAnnouncementId = null;
+    editingAnnouncementAttachment = null;
 
     const form = $("#announcementForm");
     if (form) form.reset();
 
     $("#announcementPublished").checked = true;
+    $("#announcementPinned").checked = false;
     $("#announcementPublishAt").value = toLocalDateTimeInput(new Date());
+    $("#announcementFileId").value = "";
+    $("#announcementExistingAttachment").textContent = "";
+    $("#announcementExistingAttachment").classList.add("hidden");
+    $("#announcementRemoveAttachmentRow").classList.add("hidden");
+    $("#announcementRemoveAttachment").checked = false;
+
     $("#announcementFormHeading").textContent = "Create Announcement";
     $("#announcementEditBadge").classList.add("hidden");
     $("#cancelAnnouncementEditBtn").classList.add("hidden");
@@ -547,11 +681,26 @@
     updateSectionPickerSummary(prefix);
   }
 
+  async function ensureAnnouncementPinLimit(excludeId = null) {
+    const snap = await db
+      .collection("announcements")
+      .where("pinned", "==", true)
+      .get();
+
+    const pinnedCount = snap.docs.filter(doc => doc.id !== excludeId).length;
+
+    if (pinnedCount >= 3) {
+      throw new Error("Maximum of 3 pinned announcements only. Unpin one first.");
+    }
+  }
+
   async function saveAnnouncement(e) {
     e.preventDefault();
 
     const btn = $("#saveAnnouncementBtn");
-    setBusy(btn, true, editingAnnouncementId ? "UPDATING…" : "SAVING…");
+    const wasEditing = Boolean(editingAnnouncementId);
+
+    setBusy(btn, true, wasEditing ? "UPDATING…" : "SAVING…");
     setStatus("#announcementStatus", "Saving announcement…");
 
     try {
@@ -562,12 +711,61 @@
         throw new Error("Please enter a valid publish date and time.");
       }
 
+      const pinned = $("#announcementPinned").checked;
+      if (pinned) {
+        await ensureAnnouncementPinLimit(editingAnnouncementId);
+      }
+
+      let fileId = editingAnnouncementAttachment?.fileId || "";
+      let fileName = editingAnnouncementAttachment?.fileName || "";
+      let fileType = editingAnnouncementAttachment?.fileType || "";
+      let fileSize = editingAnnouncementAttachment?.fileSize || null;
+
+      if ($("#announcementRemoveAttachment").checked) {
+        fileId = "";
+        fileName = "";
+        fileType = "";
+        fileSize = null;
+      }
+
+      const manualFileId = G10DataService.extractDriveFileId(
+        $("#announcementFileId").value
+      );
+
+      if (manualFileId) {
+        const sameExisting = manualFileId === editingAnnouncementAttachment?.fileId;
+        fileId = manualFileId;
+
+        if (!sameExisting) {
+          fileName = "Google Drive attachment";
+          fileType = "application/octet-stream";
+          fileSize = null;
+        }
+      }
+
+      const uploaded = await maybeUploadFile(
+        $("#announcementFile"),
+        "announcements"
+      );
+
+      if (uploaded) {
+        fileId = uploaded.fileId;
+        fileName = uploaded.fileName;
+        fileType = uploaded.fileType;
+        fileSize = uploaded.fileSize;
+      }
+
       const payload = {
         title: $("#announcementTitle").value.trim(),
         message: $("#announcementMessage").value.trim(),
         allowedSections: getSelectedSections("announcement"),
         published: $("#announcementPublished").checked,
+        pinned,
         publishAt: firebase.firestore.Timestamp.fromDate(publishDate),
+        fileId,
+        fileName,
+        fileType,
+        fileSize,
         createdByName: admin.name || admin.email || "ICT Teacher",
         createdByEmail: admin.email || "",
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -592,11 +790,12 @@
       await syncAnnouncementFeeds(ref.id, payload);
 
       await ref.set({
-        feedVersion: 1,
+        feedVersion: 2,
         feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
 
       const status = announcementAdminStatus(payload);
+
       setStatus(
         "#announcementStatus",
         status.label === "SCHEDULED"
@@ -608,11 +807,22 @@
       );
 
       resetAnnouncementForm();
-      await loadAdminAnnouncements();
+      await Promise.all([
+        loadAdminAnnouncements(),
+        loadAdminDashboardStats()
+      ]);
     } catch (err) {
-      setStatus("#announcementStatus", err.message || "Could not save announcement.", false);
+      setStatus(
+        "#announcementStatus",
+        err.message || "Could not save announcement.",
+        false
+      );
     } finally {
-      setBusy(btn, false, editingAnnouncementId ? "UPDATE ANNOUNCEMENT" : "SAVE ANNOUNCEMENT");
+      setBusy(
+        btn,
+        false,
+        wasEditing ? "UPDATE ANNOUNCEMENT" : "SAVE ANNOUNCEMENT"
+      );
     }
   }
 
@@ -633,10 +843,10 @@
         });
 
       for (const item of rows) {
-        if (item.feedVersion !== 1) {
+        if (item.feedVersion !== 2) {
           await syncAnnouncementFeeds(item.id, item);
           await db.collection("announcements").doc(item.id).set({
-            feedVersion: 1,
+            feedVersion: 2,
             feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
         }
@@ -670,6 +880,8 @@
             <span class="announcement-status-pill ${status.className}">
               ${status.label}
             </span>
+            ${item.pinned === true ? '<span class="announcement-pinned-badge">PINNED</span>' : ''}
+            ${item.fileId ? '<span class="announcement-attachment-badge">ATTACHMENT</span>' : ''}
           </div>
 
           <p>${escapeHtml(item.message || "")}</p>
@@ -685,6 +897,12 @@
             data-id="${escapeHtml(item.id)}"
             data-title="${escapeHtml(item.title || "Announcement")}">
             ♥ View Hearts
+          </button>
+
+          <button class="mini-btn announcement-pin"
+            data-id="${escapeHtml(item.id)}"
+            data-pinned="${item.pinned === true ? "1" : "0"}">
+            ${item.pinned === true ? "Unpin" : "Pin"}
           </button>
 
           <button class="mini-btn announcement-edit"
@@ -714,6 +932,42 @@
       );
     });
 
+    $$(".announcement-pin").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const ref = db.collection("announcements").doc(btn.dataset.id);
+        const snap = await ref.get();
+        if (!snap.exists) return;
+
+        const current = { id: snap.id, ...snap.data() };
+        const nextPinned = btn.dataset.pinned !== "1";
+
+        if (nextPinned) {
+          try {
+            await ensureAnnouncementPinLimit(btn.dataset.id);
+          } catch (err) {
+            alert(err.message);
+            return;
+          }
+        }
+
+        const updated = {
+          ...current,
+          pinned: nextPinned,
+          feedVersion: 2,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await ref.update({
+          pinned: nextPinned,
+          feedVersion: 2,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        await syncAnnouncementFeeds(btn.dataset.id, updated);
+        await loadAdminAnnouncements();
+      });
+    });
+
     $$(".announcement-edit").forEach(btn => {
       btn.addEventListener("click", () =>
         editAnnouncement(btn.dataset.id)
@@ -737,7 +991,7 @@
 
         await ref.update({
           published: nextPublished,
-          feedVersion: 1,
+          feedVersion: 2,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -767,6 +1021,29 @@
     $("#announcementTitle").value = item.title || "";
     $("#announcementMessage").value = item.message || "";
     $("#announcementPublished").checked = item.published === true;
+    $("#announcementPinned").checked = item.pinned === true;
+
+    editingAnnouncementAttachment = item.fileId
+      ? {
+          fileId: item.fileId,
+          fileName: item.fileName || "Google Drive attachment",
+          fileType: item.fileType || "",
+          fileSize: item.fileSize || null
+        }
+      : null;
+
+    $("#announcementFileId").value = item.fileId || "";
+    $("#announcementRemoveAttachment").checked = false;
+
+    if (editingAnnouncementAttachment) {
+      $("#announcementExistingAttachment").textContent =
+        `Current attachment: ${editingAnnouncementAttachment.fileName}`;
+      $("#announcementExistingAttachment").classList.remove("hidden");
+      $("#announcementRemoveAttachmentRow").classList.remove("hidden");
+    } else {
+      $("#announcementExistingAttachment").classList.add("hidden");
+      $("#announcementRemoveAttachmentRow").classList.add("hidden");
+    }
 
     const publishDate = announcementTimestampDate(item.publishAt) || new Date();
     $("#announcementPublishAt").value = toLocalDateTimeInput(publishDate);
@@ -905,6 +1182,7 @@
 
     badge.textContent = String(count);
     badge.classList.toggle("hidden", count === 0);
+    setAdminStat("#statNewHearts", count);
 
     $("#adminNotificationList").innerHTML = count
       ? currentUnreadNotifications.map(item => `

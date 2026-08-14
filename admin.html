@@ -101,37 +101,72 @@
       </nav>
 
       <section id="admin-page-overview" class="admin-page active">
-        <div class="admin-grid">
-          <article class="panel">
-            <h3>Architecture Status</h3>
-            <p>The student app reads Firestore directly. Apps Script is only for teacher-side Google Sheets / Drive operations.</p>
-            <div class="code-note">
-              STUDENT → Firebase/Firestore<br>
-              TEACHER SYNC → Apps Script → Sheet processing → Firestore publish<br>
-              FILES → Google Drive
-            </div>
+        <div class="admin-dashboard-head">
+          <div>
+            <p class="section-kicker">PORTAL OVERVIEW</p>
+            <h3>Admin Dashboard</h3>
+            <p>Live counts from your current portal data.</p>
+          </div>
+          <button id="refreshAdminDashboard" class="mini-btn" type="button">Refresh Counts</button>
+        </div>
+
+        <div class="admin-stat-grid">
+          <article class="admin-stat-card">
+            <span class="admin-stat-label">TOTAL STUDENTS</span>
+            <strong id="statTotalStudents">—</strong>
+            <small>Active student accounts</small>
           </article>
 
-          <article class="panel">
-            <h3>Current Settings</h3>
-            <p>These values are read from <code>settings/main</code>.</p>
-            <form id="settingsForm" class="admin-form">
-              <label><span>School Year</span><input id="settingSchoolYear" value="2026-2027"></label>
-              <label><span>Current Term</span>
-                <select id="settingCurrentTerm">
-                  <option value="1">Term 1</option>
-                  <option value="2">Term 2</option>
-                  <option value="3">Term 3</option>
-                </select>
-              </label>
-              <div class="admin-info-note">
-                Class announcements are now managed from the <strong>Announcements</strong> tab with section targeting, scheduling, and heart reactions.
-              </div>
-              <button class="primary-btn" type="submit">SAVE SETTINGS</button>
-            </form>
-            <div id="settingsStatus" class="admin-status"></div>
+          <article class="admin-stat-card">
+            <span class="admin-stat-label">PUBLISHED LESSONS</span>
+            <strong id="statPublishedLessons">—</strong>
+            <small>Currently published</small>
+          </article>
+
+          <article class="admin-stat-card">
+            <span class="admin-stat-label">ACTIVE ACTIVITIES</span>
+            <strong id="statActiveActivities">—</strong>
+            <small id="statActiveActivitiesNote">Current term</small>
+          </article>
+
+          <article class="admin-stat-card warning">
+            <span class="admin-stat-label">MISSING COMPLIANCE</span>
+            <strong id="statMissingCompliance">—</strong>
+            <small id="statMissingComplianceNote">Students with missing tasks</small>
+          </article>
+
+          <article class="admin-stat-card scheduled">
+            <span class="admin-stat-label">SCHEDULED POSTS</span>
+            <strong id="statScheduledAnnouncements">—</strong>
+            <small>Future announcements</small>
+          </article>
+
+          <article class="admin-stat-card heart">
+            <span class="admin-stat-label">NEW HEARTS</span>
+            <strong id="statNewHearts">—</strong>
+            <small>Unread reaction notifications</small>
           </article>
         </div>
+
+        <article class="panel admin-settings-panel">
+          <h3>Current Settings</h3>
+          <p>Portal school year and active term.</p>
+          <form id="settingsForm" class="admin-form">
+            <label><span>School Year</span><input id="settingSchoolYear" value="2026-2027"></label>
+            <label><span>Current Term</span>
+              <select id="settingCurrentTerm">
+                <option value="1">Term 1</option>
+                <option value="2">Term 2</option>
+                <option value="3">Term 3</option>
+              </select>
+            </label>
+            <div class="admin-info-note">
+              Class announcements are managed from the <strong>Announcements</strong> tab.
+            </div>
+            <button class="primary-btn" type="submit">SAVE SETTINGS</button>
+          </form>
+          <div id="settingsStatus" class="admin-status"></div>
+        </article>
       </section>
 
       <section id="admin-page-announcements" class="admin-page">
@@ -169,6 +204,29 @@
                 <span>Publish Date &amp; Time</span>
                 <input id="announcementPublishAt" type="datetime-local">
                 <small class="field-help">Leave the current time to publish now, or choose a future date/time to schedule automatically.</small>
+              </label>
+
+              <div class="announcement-attachment-box">
+                <div class="field-label">Optional Attachment</div>
+                <label>
+                  <span>Upload image / PDF / file to Google Drive</span>
+                  <input id="announcementFile" type="file">
+                </label>
+                <label>
+                  <span>Or paste Google Drive File ID / URL</span>
+                  <input id="announcementFileId" placeholder="Optional Drive file ID or URL">
+                </label>
+                <div id="announcementExistingAttachment" class="attachment-existing hidden"></div>
+                <label id="announcementRemoveAttachmentRow" class="check-row hidden">
+                  <input id="announcementRemoveAttachment" type="checkbox">
+                  <span>Remove current attachment</span>
+                </label>
+                <small class="field-help">The portal loads only the file metadata first. The actual attachment opens only when the student clicks it.</small>
+              </div>
+
+              <label class="check-row">
+                <input id="announcementPinned" type="checkbox">
+                <span>Pin as important <small>(maximum 3 pinned announcements)</small></span>
               </label>
 
               <label class="check-row">

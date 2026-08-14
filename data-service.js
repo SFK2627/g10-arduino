@@ -410,10 +410,13 @@
     }
 
     return Array.from(docsById.values())
-      .sort((a, b) =>
-        firestoreTimestampMillis(b.publishAt) -
-        firestoreTimestampMillis(a.publishAt)
-      );
+      .sort((a, b) => {
+        const pinDiff = Number(b.pinned === true) - Number(a.pinned === true);
+        if (pinDiff !== 0) return pinDiff;
+
+        return firestoreTimestampMillis(b.publishAt) -
+          firestoreTimestampMillis(a.publishAt);
+      });
   }
 
   async function getAnnouncements(section, force = false) {
@@ -432,6 +435,54 @@
     const rows = await loadAnnouncementFeed(section);
     cache.announcements[key] = rows;
     return rows;
+  }
+
+  async function getAnnouncementReadIds() {
+    await init();
+
+    if (demoMode || !auth?.currentUser) return [];
+
+    const snap = await db
+      .collection("announcementReads")
+      .doc(auth.currentUser.uid)
+      .collection("items")
+      .get();
+
+    return snap.docs.map(doc => doc.id);
+  }
+
+  async function markAnnouncementsRead(announcements) {
+    await init();
+
+    if (demoMode || !auth?.currentUser) return;
+
+    const rows = Array.isArray(announcements) ? announcements : [];
+    if (!rows.length) return;
+
+    const uid = auth.currentUser.uid;
+
+    for (let i = 0; i < rows.length; i += 350) {
+      const batch = db.batch();
+
+      rows.slice(i, i + 350).forEach(post => {
+        const announcementId = String(post?.id || "").trim();
+        if (!announcementId) return;
+
+        batch.set(
+          db.collection("announcementReads")
+            .doc(uid)
+            .collection("items")
+            .doc(announcementId),
+          {
+            announcementId,
+            readAt: firebase.firestore.FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
+      });
+
+      await batch.commit();
+    }
   }
 
   async function getAnnouncementHeartStates(announcementIds) {
@@ -697,6 +748,8 @@
     getLessons,
     getActivities,
     getAnnouncements,
+    getAnnouncementReadIds,
+    markAnnouncementsRead,
     getAnnouncementHeartStates,
     toggleAnnouncementHeart,
     getCompliance,
