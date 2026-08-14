@@ -1,0 +1,64 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function ownStudentProfile() {
+      return get(/databases/$(database)/documents/students/$(request.auth.uid));
+    }
+
+    function canReadPublishedMaterial() {
+      return signedIn()
+        && resource.data.published == true
+        && resource.data.allowedSections is list
+        && resource.data.allowedSections.hasAny([
+          ownStudentProfile().data.section,
+          "*"
+        ]);
+    }
+
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      // Create the first admin document manually in Firebase Console.
+      allow write: if false;
+    }
+
+    match /students/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /settings/{documentId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /lessons/{lessonId} {
+      allow read: if isAdmin() || canReadPublishedMaterial();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /activities/{activityId} {
+      allow read: if isAdmin() || canReadPublishedMaterial();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /studentCompliance/{uid}/terms/{termId} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

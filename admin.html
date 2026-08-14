@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121316">
+  <title>Admin • Grade 10 Arduino Hub</title>
+  <link rel="stylesheet" href="styles.css">
+
+  <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+
+  <script defer src="firebase-config.js"></script>
+  <script defer src="demo-data.js"></script>
+  <script defer src="data-service.js"></script>
+  <script defer src="admin.js"></script>
+</head>
+<body>
+  <section id="adminLoginView" class="admin-login">
+    <div class="admin-login-card">
+      <p class="eyebrow dark">Teacher Access</p>
+      <h1>Admin Panel</h1>
+      <p class="muted">Use the Firebase email/password account that you marked as an admin in Firestore.</p>
+
+      <form id="adminLoginForm" class="stack-form">
+        <label>
+          <span>Email</span>
+          <input id="adminEmail" type="email" autocomplete="username" required>
+        </label>
+        <label>
+          <span>Password</span>
+          <input id="adminPassword" type="password" autocomplete="current-password" minlength="6" required>
+        </label>
+        <p id="adminLoginError" class="form-error"></p>
+        <button id="adminLoginBtn" class="primary-btn" type="submit">ADMIN SIGN IN</button>
+      </form>
+
+      <p class="login-footnote"><a href="index.html">← Student Portal</a></p>
+    </div>
+  </section>
+
+  <div id="adminApp" class="admin-shell hidden">
+    <header class="admin-top">
+      <div class="admin-brand">
+        <div class="mini-board">UNO</div>
+        <div>
+          <strong>Grade 10 Arduino Hub</strong>
+          <small>Admin Panel</small>
+        </div>
+      </div>
+      <div class="inline-actions">
+        <span id="adminName" style="font-size:.76rem;color:#c6cbd3;"></span>
+        <button id="adminLogout" class="mini-btn">Log out</button>
+      </div>
+    </header>
+
+    <main class="admin-main">
+      <nav class="admin-tabs">
+        <button class="admin-tab active" data-admin-page="overview">Overview</button>
+        <button class="admin-tab" data-admin-page="lessons">Lessons</button>
+        <button class="admin-tab" data-admin-page="activities">Activities</button>
+        <button class="admin-tab" data-admin-page="students">Students</button>
+        <button class="admin-tab" data-admin-page="sync">Compliance Sync</button>
+      </nav>
+
+      <section id="admin-page-overview" class="admin-page active">
+        <div class="admin-grid">
+          <article class="panel">
+            <h3>Architecture Status</h3>
+            <p>The student app reads Firestore directly. Apps Script is only for teacher-side Google Sheets / Drive operations.</p>
+            <div class="code-note">
+              STUDENT → Firebase/Firestore<br>
+              TEACHER SYNC → Apps Script → Sheet processing → Firestore publish<br>
+              FILES → Google Drive
+            </div>
+          </article>
+
+          <article class="panel">
+            <h3>Current Settings</h3>
+            <p>These values are read from <code>settings/main</code>.</p>
+            <form id="settingsForm" class="admin-form">
+              <label><span>School Year</span><input id="settingSchoolYear" value="2026-2027"></label>
+              <label><span>Current Term</span>
+                <select id="settingCurrentTerm">
+                  <option value="1">Term 1</option>
+                  <option value="2">Term 2</option>
+                  <option value="3">Term 3</option>
+                </select>
+              </label>
+              <label><span>Announcement</span><textarea id="settingAnnouncement"></textarea></label>
+              <button class="primary-btn" type="submit">SAVE SETTINGS</button>
+            </form>
+            <div id="settingsStatus" class="admin-status"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="admin-page-lessons" class="admin-page">
+        <div class="admin-grid">
+          <article class="panel">
+            <h3>Add Lesson</h3>
+            <p>Use a Drive file ID/URL now, or configure Apps Script to upload from this panel.</p>
+
+            <form id="lessonForm" class="admin-form">
+              <label><span>Lesson Title</span><input id="lessonTitle" required></label>
+              <label><span>Description</span><textarea id="lessonDescription"></textarea></label>
+              <label><span>Term</span>
+                <select id="lessonTerm"><option>1</option><option>2</option><option>3</option></select>
+              </label>
+              <label><span>Display Order</span><input id="lessonOrder" type="number" min="1" value="1" required></label>
+              <label><span>Allowed Sections</span><input id="lessonSections" placeholder="GRADE 10 - A, GRADE 10 - B or *"></label>
+              <label><span>Google Drive File ID or URL</span><input id="lessonFileId"></label>
+              <label><span>Optional file upload through Apps Script</span><input id="lessonFile" type="file" accept=".pdf,image/*"></label>
+              <label class="check-row"><input id="lessonPublished" type="checkbox" checked> <span>Published</span></label>
+              <button class="primary-btn" type="submit">SAVE LESSON</button>
+            </form>
+            <div id="lessonStatus" class="admin-status"></div>
+          </article>
+
+          <article class="panel">
+            <h3>Lessons</h3>
+            <p>Admin reads the lesson collection only when this tab is opened/refreshed.</p>
+            <div class="inline-actions" style="margin-bottom:12px;">
+              <button id="refreshLessonsAdmin" class="mini-btn">Refresh</button>
+            </div>
+            <div id="adminLessonsList" class="admin-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="admin-page-activities" class="admin-page">
+        <div class="admin-grid">
+          <article class="panel">
+            <h3>Add Activity</h3>
+            <p>Large files stay in Google Drive; Firestore stores only their small metadata.</p>
+
+            <form id="activityForm" class="admin-form">
+              <label><span>Activity Title</span><input id="activityTitle" required></label>
+              <label><span>Description</span><textarea id="activityDescription"></textarea></label>
+              <label><span>Term</span>
+                <select id="activityTerm"><option>1</option><option>2</option><option>3</option></select>
+              </label>
+              <label><span>Display Order</span><input id="activityOrder" type="number" min="1" value="1" required></label>
+              <label><span>Due Date</span><input id="activityDueDate" type="date"></label>
+              <label><span>Allowed Sections</span><input id="activitySections" placeholder="GRADE 10 - A, GRADE 10 - B or *"></label>
+              <label><span>Google Drive File ID or URL</span><input id="activityFileId"></label>
+              <label><span>Optional file upload through Apps Script</span><input id="activityFile" type="file" accept=".pdf,image/*,*/*"></label>
+              <label class="check-row"><input id="activityPublished" type="checkbox" checked> <span>Published</span></label>
+              <button class="primary-btn" type="submit">SAVE ACTIVITY</button>
+            </form>
+            <div id="activityStatus" class="admin-status"></div>
+          </article>
+
+          <article class="panel">
+            <h3>Activities</h3>
+            <div class="inline-actions" style="margin-bottom:12px;">
+              <button id="refreshActivitiesAdmin" class="mini-btn">Refresh</button>
+            </div>
+            <div id="adminActivitiesList" class="admin-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="admin-page-students" class="admin-page">
+        <div class="admin-grid">
+          <article class="panel">
+            <h3>Add Student Account</h3>
+            <p>Creates a Firebase Email/Password user using a private-looking synthetic email based on Student ID, then writes the student's Firestore profile.</p>
+
+            <form id="studentForm" class="admin-form">
+              <label><span>Student ID</span><input id="newStudentId" required></label>
+              <label><span>Full Name</span><input id="newStudentName" required></label>
+              <label><span>Section</span><input id="newStudentSection" required></label>
+              <label><span>Initial Password</span><input id="newStudentPassword" value="123456" minlength="6" required></label>
+              <button class="primary-btn" type="submit">CREATE STUDENT</button>
+            </form>
+            <div id="studentStatus" class="admin-status"></div>
+          </article>
+
+          <article class="panel">
+            <h3>Student Profiles</h3>
+            <p>This is admin-only data. Students never download the whole section list.</p>
+            <div class="inline-actions" style="margin-bottom:12px;">
+              <button id="refreshStudentsAdmin" class="mini-btn">Refresh</button>
+            </div>
+            <div id="adminStudentsList" class="admin-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="admin-page-sync" class="admin-page">
+        <div class="admin-grid">
+          <article class="panel">
+            <h3>Preview Compliance Sync</h3>
+            <p>Apps Script reads the selected Google Sheet once in a batch and returns a preview. Nothing student-facing changes during preview.</p>
+
+            <form id="syncPreviewForm" class="admin-form">
+              <label><span>Sheet Name / Section</span><input id="syncSheetName" placeholder="e.g. G10-ST-FAUSTINA" required></label>
+              <label><span>Term</span>
+                <select id="syncTerm"><option>1</option><option>2</option><option>3</option></select>
+              </label>
+              <button class="primary-btn" type="submit">PREVIEW SYNC</button>
+            </form>
+            <div id="syncStatus" class="admin-status"></div>
+
+            <div style="margin-top:18px;">
+              <button id="publishSyncBtn" class="primary-btn" disabled>PUBLISH PREVIEW TO FIRESTORE</button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h3>Preview</h3>
+            <p id="syncPreviewNote">No preview loaded yet.</p>
+            <div id="syncPreviewTable" class="table-wrap"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

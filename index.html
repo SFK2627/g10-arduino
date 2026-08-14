@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#b20f1b">
+  <title>Grade 10 Arduino Hub</title>
+  <link rel="stylesheet" href="styles.css">
+
+  <!--
+    No npm. Firebase is loaded from Google's CDN.
+    If these scripts cannot load, local file:// Demo Mode still works.
+  -->
+  <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+
+  <script defer src="firebase-config.js"></script>
+  <script defer src="demo-data.js"></script>
+  <script defer src="data-service.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <noscript>
+    <div class="noscript">This application needs JavaScript enabled.</div>
+  </noscript>
+
+  <section id="loginView" class="login-shell">
+    <div class="login-art">
+      <div class="brand-mark" aria-hidden="true">
+        <span class="brand-board">UNO</span>
+        <span class="brand-led brand-led-red"></span>
+        <span class="brand-led brand-led-blue"></span>
+      </div>
+      <p class="eyebrow">ICT 10 • Arduino</p>
+      <h1>Grade 10<br>Arduino Hub</h1>
+      <p class="login-lead">Lessons, activities, and compliance in one fast, responsive school web app.</p>
+
+      <div class="architecture-strip" aria-label="Application architecture">
+        <span>Firebase</span><b>→</b><span>Fast Data</span><b>•</b><span>Drive</span><b>→</b><span>Files</span>
+      </div>
+    </div>
+
+    <div class="login-panel">
+      <div class="login-card">
+        <div id="demoBanner" class="notice notice-demo hidden">
+          LOCAL DEMO MODE — Firebase is not required for this preview.
+        </div>
+
+        <p class="eyebrow dark">Student Portal</p>
+        <h2>Welcome back</h2>
+        <p class="muted">Use your Student ID and password.</p>
+
+        <form id="loginForm" class="stack-form" autocomplete="on">
+          <label>
+            <span>Student ID</span>
+            <input id="studentId" name="studentId" type="text" autocomplete="username" placeholder="Enter Student ID" required>
+          </label>
+          <label>
+            <span>Password</span>
+            <div class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter password" minlength="6" required>
+              <button id="togglePassword" class="ghost-small" type="button" aria-label="Show password">Show</button>
+            </div>
+          </label>
+
+          <p id="loginError" class="form-error" role="alert"></p>
+
+          <button id="loginBtn" class="primary-btn" type="submit">SIGN IN</button>
+          <button id="demoBtn" class="secondary-btn hidden" type="button">OPEN LOCAL DEMO</button>
+        </form>
+
+        <p class="login-footnote">Teacher/Admin? <a href="admin.html">Open Admin Panel</a></p>
+      </div>
+    </div>
+  </section>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="mini-board">UNO</div>
+        <div>
+          <strong>G10 Arduino</strong>
+          <small>Learning Hub</small>
+        </div>
+      </div>
+
+      <nav class="side-nav" aria-label="Main navigation">
+        <button class="nav-btn active" data-page="dashboard"><span>01</span> Dashboard</button>
+        <button class="nav-btn" data-page="lessons"><span>02</span> Lessons</button>
+        <button class="nav-btn" data-page="activities"><span>03</span> Activities</button>
+        <button class="nav-btn" data-page="compliance"><span>04</span> Compliance</button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="user-mini">
+          <div class="avatar" id="avatarInitials">JD</div>
+          <div>
+            <strong id="sideStudentName">Student</strong>
+            <small id="sideSection">Grade 10</small>
+          </div>
+        </div>
+        <button id="logoutBtn" class="logout-btn">Log out</button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow dark" id="pageEyebrow">Student Portal</p>
+          <h2 id="pageTitle">Dashboard</h2>
+        </div>
+        <div class="top-actions">
+          <span id="modePill" class="mode-pill">LIVE</span>
+          <select id="termSelect" class="term-select" aria-label="Select term">
+            <option value="1">Term 1</option>
+            <option value="2">Term 2</option>
+            <option value="3">Term 3</option>
+          </select>
+        </div>
+      </header>
+
+      <section id="page-dashboard" class="page active-page">
+        <div class="hero-card">
+          <div>
+            <p class="eyebrow light">Hello,</p>
+            <h3 id="heroStudentName">Student</h3>
+            <p id="heroSection">Grade 10</p>
+          </div>
+          <div class="hero-chip">
+            <small>School Year</small>
+            <strong id="schoolYearText">2026-2027</strong>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="info-card">
+            <div class="card-kicker">CURRENT TERM</div>
+            <div class="big-value" id="currentTermText">Term 1</div>
+            <p>Your lesson/activity pages load data only when you open them.</p>
+          </article>
+
+          <article class="info-card accent-card">
+            <div class="card-kicker">LATEST LESSON</div>
+            <div class="card-title" id="latestLessonText">—</div>
+            <button class="text-link goto-page" data-page="lessons">Open lessons →</button>
+          </article>
+
+          <article class="info-card">
+            <div class="card-kicker">LATEST ACTIVITY</div>
+            <div class="card-title" id="latestActivityText">—</div>
+            <button class="text-link goto-page" data-page="activities">Open activities →</button>
+          </article>
+        </div>
+
+        <article class="announcement-card">
+          <div class="announcement-mark">!</div>
+          <div>
+            <div class="card-kicker">CLASS ANNOUNCEMENT</div>
+            <h3 id="announcementText">Welcome to the Grade 10 Arduino learning hub.</h3>
+          </div>
+        </article>
+
+        <div class="quick-grid">
+          <button class="quick-card goto-page" data-page="lessons">
+            <span class="quick-no">01</span>
+            <strong>Lessons</strong>
+            <small>Load metadata only</small>
+          </button>
+          <button class="quick-card goto-page" data-page="activities">
+            <span class="quick-no">02</span>
+            <strong>Activities</strong>
+            <small>Files open on demand</small>
+          </button>
+          <button class="quick-card goto-page" data-page="compliance">
+            <span class="quick-no">03</span>
+            <strong>Compliance</strong>
+            <small>Your record only</small>
+          </button>
+        </div>
+      </section>
+
+      <section id="page-lessons" class="page">
+        <div class="section-toolbar">
+          <div>
+            <h3>Lesson Viewer</h3>
+            <p>Only lesson details are loaded first. PDFs stay in Google Drive until you open one.</p>
+          </div>
+          <button class="refresh-btn" data-refresh="lessons">Refresh</button>
+        </div>
+        <div id="lessonsList" class="content-grid"></div>
+      </section>
+
+      <section id="page-activities" class="page">
+        <div class="section-toolbar">
+          <div>
+            <h3>Activity Viewer</h3>
+            <p>Activity metadata loads first; attachments remain unloaded until selected.</p>
+          </div>
+          <button class="refresh-btn" data-refresh="activities">Refresh</button>
+        </div>
+        <div id="activitiesList" class="content-grid"></div>
+      </section>
+
+      <section id="page-compliance" class="page">
+        <div class="section-toolbar">
+          <div>
+            <h3>Compliance Status</h3>
+            <p>Your published Firestore snapshot only — no Google Sheet request is made here.</p>
+          </div>
+          <button class="refresh-btn" data-refresh="compliance">Refresh</button>
+        </div>
+
+        <article class="compliance-summary">
+          <div>
+            <span class="card-kicker">LAST UPDATED</span>
+            <strong id="complianceUpdated">Not yet published</strong>
+          </div>
+          <div class="summary-dot"></div>
+          <div>
+            <span class="card-kicker">TERM</span>
+            <strong id="complianceTerm">Term 1</strong>
+          </div>
+          <div class="summary-dot"></div>
+          <div>
+            <span class="card-kicker">MISSING</span>
+            <strong id="missingCount">—</strong>
+          </div>
+        </article>
+
+        <section id="missingRequirementsCard" class="missing-card hidden">
+          <div class="missing-card-head">
+            <div>
+              <span class="card-kicker">MGA KULANG / MISSING REQUIREMENTS</span>
+              <h3 id="missingHeading">Requirements to complete</h3>
+            </div>
+            <span id="missingBadge" class="missing-count-badge">0</span>
+          </div>
+          <div id="missingRequirementsList" class="missing-requirements-list"></div>
+        </section>
+
+        <div class="all-status-heading">
+          <div>
+            <span class="card-kicker">ALL REQUIREMENTS</span>
+            <h3>Complete Compliance List</h3>
+          </div>
+        </div>
+
+        <div id="complianceList" class="compliance-list"></div>
+      </section>
+    </main>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="mobile-nav-btn active" data-page="dashboard">Home</button>
+      <button class="mobile-nav-btn" data-page="lessons">Lessons</button>
+      <button class="mobile-nav-btn" data-page="activities">Tasks</button>
+      <button class="mobile-nav-btn" data-page="compliance">Status</button>
+    </nav>
+  </div>
+
+  <div id="viewerModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="viewerTitle">
+    <div class="modal-backdrop" data-close-viewer></div>
+    <div class="viewer-dialog">
+      <header class="viewer-head">
+        <div>
+          <small id="viewerType">FILE VIEWER</small>
+          <h3 id="viewerTitle">Document</h3>
+        </div>
+        <button class="viewer-close" data-close-viewer aria-label="Close viewer">×</button>
+      </header>
+      <div id="viewerBody" class="viewer-body">
+        <div class="viewer-loading">Loading file…</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
