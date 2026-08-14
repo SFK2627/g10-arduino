@@ -7,6 +7,9 @@
   let admin = null;
   let db = null;
   let previewPayload = null;
+  let bulkStudentRows = [];
+  let knownSections = [];
+  let cachedStudentProfiles = [];
 
   document.addEventListener("DOMContentLoaded", boot);
 
@@ -46,6 +49,11 @@
     $("#lessonForm").addEventListener("submit", saveLesson);
     $("#activityForm").addEventListener("submit", saveActivity);
     $("#studentForm").addEventListener("submit", createStudent);
+    $("#bulkStudentForm").addEventListener("submit", previewBulkStudents);
+    $("#bulkImportBtn").addEventListener("click", importBulkStudents);
+    $("#newStudentSection").addEventListener("change", handleNewStudentSectionChange);
+    $("#syncSheetName").addEventListener("change", handleSyncSheetChange);
+    $("#studentSectionFilter").addEventListener("change", renderStudentProfiles);
     $("#syncPreviewForm").addEventListener("submit", previewSync);
     $("#publishSyncBtn").addEventListener("click", publishSync);
 
@@ -76,6 +84,7 @@
     $("#adminApp").classList.remove("hidden");
     $("#adminName").textContent = admin.name || admin.email || "Admin";
     await loadSettings();
+    await loadSectionDirectory();
   }
 
   async function adminLogout() {
@@ -94,6 +103,177 @@
     if (page === "lessons") await loadAdminLessons();
     if (page === "activities") await loadAdminActivities();
     if (page === "students") await loadStudents();
+  }
+
+
+  function normalizeSectionName(value) {
+    return String(value || "").trim().replace(/\s+/g, " ");
+  }
+
+  async function loadSectionDirectory(force = false) {
+    if (!force && knownSections.length) {
+      renderSectionControls();
+      return knownSections;
+    }
+
+    try {
+      const snap = await db.collection("students").get();
+      cachedStudentProfiles = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+
+      knownSections = Array.from(new Set(
+        cachedStudentProfiles
+          .map(student => normalizeSectionName(student.section))
+          .filter(Boolean)
+      )).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+
+      renderSectionControls();
+      return knownSections;
+    } catch (err) {
+      console.warn("Could not load section directory:", err);
+      knownSections = [];
+      renderSectionControls();
+      return knownSections;
+    }
+  }
+
+  function optionHtml(value, label, selected = false) {
+    return `<option value="${escapeHtml(value)}"${selected ? " selected" : ""}>${escapeHtml(label)}</option>`;
+  }
+
+  function renderSectionControls() {
+    // Add One Student
+    const studentSelect = $("#newStudentSection");
+    if (studentSelect) {
+      const previous = studentSelect.value;
+      studentSelect.innerHTML =
+        optionHtml("", "Select section") +
+        knownSections.map(section => optionHtml(section, section, previous === section)).join("") +
+        optionHtml("__new__", "+ Add new section", previous === "__new__");
+
+      if (previous && !knownSections.includes(previous) && previous !== "__new__") {
+        studentSelect.value = "";
+      }
+    }
+
+    // Student Profiles filter
+    const filter = $("#studentSectionFilter");
+    if (filter) {
+      const previous = filter.value || "*";
+      filter.innerHTML =
+        optionHtml("*", "All Sections", previous === "*") +
+        knownSections.map(section => optionHtml(section, section, previous === section)).join("");
+      if (previous !== "*" && knownSections.includes(previous)) filter.value = previous;
+    }
+
+    // Compliance Sync: section names become suggested sheet names.
+    const syncSelect = $("#syncSheetName");
+    if (syncSelect) {
+      const previous = syncSelect.value;
+      syncSelect.innerHTML =
+        optionHtml("", "Select section") +
+        knownSections.map(section => optionHtml(section, section, previous === section)).join("") +
+        optionHtml("__custom__", "Other sheet name…", previous === "__custom__");
+    }
+
+    renderMultiSectionPicker("lesson", $("#lessonSectionsOptions"));
+    renderMultiSectionPicker("activity", $("#activitySectionsOptions"));
+  }
+
+  function renderMultiSectionPicker(prefix, target) {
+    if (!target) return;
+
+    const current = getSelectedSections(prefix);
+    const allSelected = !current.length || current.includes("*");
+
+    target.innerHTML = `
+      <label class="section-check all-section-check">
+        <input type="checkbox" data-section-picker="${prefix}" value="*" ${allSelected ? "checked" : ""}>
+        <span>All Sections</span>
+      </label>
+      ${knownSections.map(section => `
+        <label class="section-check">
+          <input type="checkbox" data-section-picker="${prefix}" value="${escapeHtml(section)}"
+            ${!allSelected && current.includes(section) ? "checked" : ""}>
+          <span>${escapeHtml(section)}</span>
+        </label>
+      `).join("")}
+      ${knownSections.length ? "" : '<div class="section-empty">Import/create students first to build the section list.</div>'}
+    `;
+
+    target.querySelectorAll(`input[data-section-picker="${prefix}"]`).forEach(input => {
+      input.addEventListener("change", () => handleSectionPickerChange(prefix, input));
+    });
+
+    updateSectionPickerSummary(prefix);
+  }
+
+  function handleSectionPickerChange(prefix, changedInput) {
+    const inputs = $$(`input[data-section-picker="${prefix}"]`);
+    const allInput = inputs.find(input => input.value === "*");
+
+    if (changedInput.value === "*" && changedInput.checked) {
+      inputs.forEach(input => {
+        if (input.value !== "*") input.checked = false;
+      });
+    } else if (changedInput.value !== "*" && changedInput.checked && allInput) {
+      allInput.checked = false;
+    }
+
+    const selectedSpecific = inputs.filter(input => input.value !== "*" && input.checked);
+    if (!selectedSpecific.length && allInput) allInput.checked = true;
+
+    updateSectionPickerSummary(prefix);
+  }
+
+  function getSelectedSections(prefix) {
+    const inputs = $$(`input[data-section-picker="${prefix}"]`);
+    if (!inputs.length) return ["*"];
+
+    const values = inputs.filter(input => input.checked).map(input => input.value);
+    return values.length ? values : ["*"];
+  }
+
+  function updateSectionPickerSummary(prefix) {
+    const summary = $(`#${prefix}SectionSummary`);
+    if (!summary) return;
+
+    const values = getSelectedSections(prefix);
+    if (values.includes("*")) {
+      summary.textContent = "All Sections";
+    } else if (values.length === 1) {
+      summary.textContent = values[0];
+    } else {
+      summary.textContent = `${values.length} Sections Selected`;
+    }
+  }
+
+  function handleNewStudentSectionChange() {
+    const isNew = $("#newStudentSection").value === "__new__";
+    $("#newStudentSectionCustomWrap").classList.toggle("hidden", !isNew);
+    $("#newStudentSectionCustom").required = isNew;
+    if (!isNew) $("#newStudentSectionCustom").value = "";
+  }
+
+  function getNewStudentSection() {
+    const selected = $("#newStudentSection").value;
+    if (selected === "__new__") {
+      return normalizeSectionName($("#newStudentSectionCustom").value);
+    }
+    return normalizeSectionName(selected);
+  }
+
+  function handleSyncSheetChange() {
+    const custom = $("#syncSheetName").value === "__custom__";
+    $("#syncSheetCustomWrap").classList.toggle("hidden", !custom);
+    $("#syncSheetCustom").required = custom;
+    if (!custom) $("#syncSheetCustom").value = "";
+  }
+
+  function getSyncSheetName() {
+    const selected = $("#syncSheetName").value;
+    return selected === "__custom__"
+      ? String($("#syncSheetCustom").value || "").trim()
+      : String(selected || "").trim();
   }
 
   async function loadSettings() {
@@ -223,7 +403,7 @@
         description: $("#lessonDescription").value.trim(),
         term: Number($("#lessonTerm").value),
         order: Number($("#lessonOrder").value),
-        allowedSections: parseSections($("#lessonSections").value),
+        allowedSections: getSelectedSections("lesson"),
         fileId,
         fileName,
         fileType,
@@ -269,7 +449,7 @@
         term: Number($("#activityTerm").value),
         order: Number($("#activityOrder").value),
         dueDate: $("#activityDueDate").value || "",
-        allowedSections: parseSections($("#activitySections").value),
+        allowedSections: getSelectedSections("activity"),
         fileId,
         fileName,
         fileType,
@@ -373,6 +553,12 @@
     try {
       const studentId = $("#newStudentId").value.trim();
       const password = $("#newStudentPassword").value;
+      const section = getNewStudentSection();
+
+      if (!section) {
+        throw new Error("Please select or enter a section.");
+      }
+
       const email = G10DataService.studentIdToEmail(studentId);
 
       const apiKey = G10_CONFIG.firebase.apiKey;
@@ -392,7 +578,8 @@
       await db.collection("students").doc(uid).set({
         studentId,
         fullName: $("#newStudentName").value.trim(),
-        section: $("#newStudentSection").value.trim(),
+        gender: $("#newStudentGender").value,
+        section,
         role: "student",
         active: true,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -401,11 +588,329 @@
 
       $("#studentForm").reset();
       $("#newStudentPassword").value = "123456";
+      $("#newStudentSectionCustomWrap").classList.add("hidden");
+      $("#newStudentSectionCustom").required = false;
       setStatus("#studentStatus", `Student created. Login ID: ${studentId}`, true);
+      await loadSectionDirectory(true);
       await loadStudents();
     } catch (err) {
       setStatus("#studentStatus", err.message, false);
     }
+  }
+
+
+  async function previewBulkStudents(e) {
+    e.preventDefault();
+    const input = $("#bulkStudentFile");
+    const file = input.files && input.files[0];
+
+    if (!file) {
+      setStatus("#bulkStudentStatus", "Choose an Excel or CSV file first.", false);
+      return;
+    }
+
+    setStatus("#bulkStudentStatus", "Reading roster…");
+    $("#bulkImportBtn").disabled = true;
+    $("#bulkPreviewWrap").classList.add("hidden");
+    bulkStudentRows = [];
+
+    try {
+      const rows = await parseRosterFile(file);
+      const normalized = normalizeRosterRows(rows);
+
+      bulkStudentRows = normalized;
+      renderBulkPreview(normalized);
+
+      const valid = normalized.filter(r => r.valid).length;
+      const invalid = normalized.length - valid;
+
+      $("#bulkPreviewWrap").classList.remove("hidden");
+      $("#bulkImportBtn").disabled = valid === 0;
+
+      setStatus(
+        "#bulkStudentStatus",
+        valid
+          ? `Preview ready: ${valid} valid student${valid === 1 ? "" : "s"}${invalid ? `, ${invalid} invalid row${invalid === 1 ? "" : "s"}` : ""}.`
+          : "No valid student rows found. Check the required columns and values.",
+        valid > 0
+      );
+    } catch (err) {
+      setStatus("#bulkStudentStatus", err.message || "Could not read the roster file.", false);
+    }
+  }
+
+  async function parseRosterFile(file) {
+    const name = String(file.name || "").toLowerCase();
+
+    if (name.endsWith(".csv")) {
+      const text = await file.text();
+      return parseCsvText(text);
+    }
+
+    if (!window.XLSX) {
+      throw new Error("Excel parser did not load. Check your internet connection or use the CSV template.");
+    }
+
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+
+    if (!firstSheetName) {
+      throw new Error("The Excel file has no worksheet.");
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    return XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      raw: false
+    });
+  }
+
+  function parseCsvText(text) {
+    const rows = [];
+    let row = [];
+    let cell = "";
+    let quoted = false;
+
+    const source = String(text || "").replace(/^\uFEFF/, "");
+
+    for (let i = 0; i < source.length; i++) {
+      const ch = source[i];
+
+      if (ch === '"') {
+        if (quoted && source[i + 1] === '"') {
+          cell += '"';
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (ch === "," && !quoted) {
+        row.push(cell);
+        cell = "";
+      } else if ((ch === "\n" || ch === "\r") && !quoted) {
+        if (ch === "\r" && source[i + 1] === "\n") i++;
+        row.push(cell);
+        if (row.some(v => String(v).trim() !== "")) rows.push(row);
+        row = [];
+        cell = "";
+      } else {
+        cell += ch;
+      }
+    }
+
+    row.push(cell);
+    if (row.some(v => String(v).trim() !== "")) rows.push(row);
+    return rows;
+  }
+
+  function normalizeHeader(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+  }
+
+  function normalizeRosterRows(rows) {
+    if (!Array.isArray(rows) || rows.length < 2) {
+      throw new Error("The roster must contain a header row and at least one student row.");
+    }
+
+    const headers = rows[0].map(normalizeHeader);
+
+    const findIndex = variants => {
+      for (const variant of variants) {
+        const idx = headers.indexOf(variant);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    const idIndex = findIndex(["student id", "studentid", "id"]);
+    const nameIndex = findIndex(["name", "student name", "full name"]);
+    const genderIndex = findIndex(["gender", "sex"]);
+    const sectionIndex = findIndex(["section", "class section"]);
+
+    const missingHeaders = [];
+    if (idIndex < 0) missingHeaders.push("Student ID");
+    if (nameIndex < 0) missingHeaders.push("Name");
+    if (genderIndex < 0) missingHeaders.push("Gender");
+    if (sectionIndex < 0) missingHeaders.push("Section");
+
+    if (missingHeaders.length) {
+      throw new Error(`Missing required column${missingHeaders.length === 1 ? "" : "s"}: ${missingHeaders.join(", ")}.`);
+    }
+
+    const seen = new Set();
+
+    return rows.slice(1)
+      .filter(row => Array.isArray(row) && row.some(v => String(v).trim() !== ""))
+      .map((row, index) => {
+        const studentId = String(row[idIndex] ?? "").trim();
+        const fullName = String(row[nameIndex] ?? "").trim();
+        const rawGender = String(row[genderIndex] ?? "").trim();
+        const section = String(row[sectionIndex] ?? "").trim();
+
+        let gender = rawGender;
+        if (/^m(ale)?$/i.test(rawGender)) gender = "Male";
+        if (/^f(emale)?$/i.test(rawGender)) gender = "Female";
+
+        const errors = [];
+        if (!studentId) errors.push("Missing Student ID");
+        if (!fullName) errors.push("Missing Name");
+        if (!["Male", "Female"].includes(gender)) errors.push("Gender must be Male or Female");
+        if (!section) errors.push("Missing Section");
+
+        const key = studentId.toLowerCase();
+        if (studentId && seen.has(key)) errors.push("Duplicate Student ID in file");
+        if (studentId) seen.add(key);
+
+        return {
+          rowNumber: index + 2,
+          studentId,
+          fullName,
+          gender,
+          section,
+          valid: errors.length === 0,
+          errors
+        };
+      });
+  }
+
+  function renderBulkPreview(rows) {
+    const valid = rows.filter(r => r.valid).length;
+    const invalid = rows.length - valid;
+
+    $("#bulkValidCount").textContent = String(valid);
+    $("#bulkInvalidCount").textContent = String(invalid);
+    $("#bulkTotalCount").textContent = String(rows.length);
+
+    const previewRows = rows.slice(0, 100);
+
+    $("#bulkStudentPreview").innerHTML = `
+      <table class="preview-table bulk-roster-table">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th>Student ID</th>
+            <th>Name</th>
+            <th>Gender</th>
+            <th>Section</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${previewRows.map(r => `
+            <tr class="${r.valid ? "" : "invalid-row"}">
+              <td>${r.rowNumber}</td>
+              <td>${escapeHtml(r.studentId)}</td>
+              <td>${escapeHtml(r.fullName)}</td>
+              <td>${escapeHtml(r.gender)}</td>
+              <td>${escapeHtml(r.section)}</td>
+              <td>${r.valid ? '<span class="import-ok">READY</span>' : `<span class="import-bad">${escapeHtml(r.errors.join("; "))}</span>`}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      ${rows.length > 100 ? `<div class="preview-limit-note">Showing first 100 of ${rows.length} rows.</div>` : ""}
+    `;
+  }
+
+  async function importBulkStudents() {
+    const validRows = bulkStudentRows.filter(r => r.valid);
+    if (!validRows.length) return;
+
+    const password = $("#bulkStudentPassword").value;
+    if (!password || password.length < 6) {
+      setStatus("#bulkStudentStatus", "Initial password must contain at least 6 characters.", false);
+      return;
+    }
+
+    const btn = $("#bulkImportBtn");
+    btn.disabled = true;
+
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+    const failures = [];
+
+    for (let i = 0; i < validRows.length; i++) {
+      const row = validRows[i];
+      btn.textContent = `IMPORTING ${i + 1}/${validRows.length}…`;
+      setStatus(
+        "#bulkStudentStatus",
+        `Creating ${i + 1} of ${validRows.length}: ${row.fullName}…`
+      );
+
+      try {
+        const result = await createStudentFromRoster(row, password);
+        if (result === "created") created++;
+        if (result === "skipped") skipped++;
+      } catch (err) {
+        failed++;
+        failures.push(`${row.studentId}: ${err.message || "Failed"}`);
+      }
+
+      // Small yield so the browser UI stays responsive during large rosters.
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+
+    btn.textContent = "IMPORT VALID STUDENTS";
+    $("#bulkStudentFile").value = "";
+    bulkStudentRows = [];
+    $("#bulkPreviewWrap").classList.add("hidden");
+
+    const parts = [`Created: ${created}`];
+    if (skipped) parts.push(`Skipped existing: ${skipped}`);
+    if (failed) parts.push(`Failed: ${failed}`);
+
+    setStatus(
+      "#bulkStudentStatus",
+      parts.join(" • ") + (failures.length ? ` — ${failures.slice(0, 3).join(" | ")}` : ""),
+      failed === 0
+    );
+
+    await loadSectionDirectory(true);
+    await loadStudents();
+  }
+
+  async function createStudentFromRoster(row, password) {
+    const email = G10DataService.studentIdToEmail(row.studentId);
+    const apiKey = G10_CONFIG.firebase.apiKey;
+
+    const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        password,
+        returnSecureToken: true
+      })
+    });
+
+    const authResult = await response.json();
+
+    if (!response.ok) {
+      const message = authResult?.error?.message || "Could not create Authentication account.";
+      if (message === "EMAIL_EXISTS") return "skipped";
+      throw new Error(message);
+    }
+
+    const uid = authResult.localId;
+
+    await db.collection("students").doc(uid).set({
+      studentId: row.studentId,
+      fullName: row.fullName,
+      gender: row.gender,
+      section: row.section,
+      role: "student",
+      active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    return "created";
   }
 
   async function loadStudents() {
@@ -414,31 +919,54 @@
 
     try {
       const snap = await db.collection("students").orderBy("fullName").get();
-      const rows = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+      cachedStudentProfiles = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
 
-      target.innerHTML = rows.length ? rows.map(s => `
-        <div class="admin-list-item">
-          <div>
-            <strong>${escapeHtml(s.fullName || s.studentId)}</strong>
-            <small>${escapeHtml(s.studentId || "")} • ${escapeHtml(s.section || "")} • ${s.active === false ? "Inactive" : "Active"}</small>
-          </div>
-          <div class="inline-actions">
-            <button class="mini-btn student-toggle" data-uid="${s.uid}" data-active="${s.active === false ? "0" : "1"}">${s.active === false ? "Activate" : "Deactivate"}</button>
-          </div>
-        </div>`).join("") : "No student profiles yet.";
+      const freshSections = Array.from(new Set(
+        cachedStudentProfiles
+          .map(student => normalizeSectionName(student.section))
+          .filter(Boolean)
+      )).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 
-      $$(".student-toggle").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          await db.collection("students").doc(btn.dataset.uid).update({
-            active: btn.dataset.active !== "1",
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
-          await loadStudents();
-        });
-      });
+      if (JSON.stringify(freshSections) !== JSON.stringify(knownSections)) {
+        knownSections = freshSections;
+        renderSectionControls();
+      }
+
+      renderStudentProfiles();
     } catch (err) {
       target.textContent = err.message;
     }
+  }
+
+  function renderStudentProfiles() {
+    const target = $("#adminStudentsList");
+    if (!target) return;
+
+    const selectedSection = $("#studentSectionFilter")?.value || "*";
+    const rows = selectedSection === "*"
+      ? cachedStudentProfiles
+      : cachedStudentProfiles.filter(student => normalizeSectionName(student.section) === selectedSection);
+
+    target.innerHTML = rows.length ? rows.map(s => `
+      <div class="admin-list-item">
+        <div>
+          <strong>${escapeHtml(s.fullName || s.studentId)}</strong>
+          <small>${escapeHtml(s.studentId || "")} • ${escapeHtml(s.gender || "—")} • ${escapeHtml(s.section || "")} • ${s.active === false ? "Inactive" : "Active"}</small>
+        </div>
+        <div class="inline-actions">
+          <button class="mini-btn student-toggle" data-uid="${s.uid}" data-active="${s.active === false ? "0" : "1"}">${s.active === false ? "Activate" : "Deactivate"}</button>
+        </div>
+      </div>`).join("") : "No students found for this section.";
+
+    $$(".student-toggle").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await db.collection("students").doc(btn.dataset.uid).update({
+          active: btn.dataset.active !== "1",
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        await loadStudents();
+      });
+    });
   }
 
   async function previewSync(e) {
@@ -449,6 +977,12 @@
       return;
     }
 
+    const resolvedSheetName = getSyncSheetName();
+    if (!resolvedSheetName) {
+      setStatus("#syncStatus", "Select a section or enter the exact Google Sheet tab name.", false);
+      return;
+    }
+
     setStatus("#syncStatus", "Reading and processing the selected sheet through Apps Script…");
     $("#publishSyncBtn").disabled = true;
     previewPayload = null;
@@ -456,7 +990,7 @@
     try {
       const result = await callAppsScriptSecure({
         action: "previewCompliance",
-        sheetName: $("#syncSheetName").value.trim(),
+        sheetName: resolvedSheetName,
         term: Number($("#syncTerm").value)
       });
 

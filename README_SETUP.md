@@ -503,3 +503,87 @@ If you create a completely new deployment, its URL may change.
 - Apps Script Drive/Sheets operations also require the same authenticated admin.
 - Google Drive lesson/activity files can use link-view sharing because they are normal learning materials.
 - Do not put compliance records, roster data, passwords, or private Sheets in public-link Drive files.
+
+
+---
+
+# v4 — Bulk Student Import
+
+Admin → Students now supports:
+
+- Add one student manually
+- Import many students from `.xlsx`, `.xls`, or `.csv`
+- Preview rows before account creation
+- Validate required values
+- Detect duplicate Student IDs inside the uploaded file
+- Use one initial password for the import batch
+- Store Student ID, Name, Gender, and Section in each Firestore student profile
+- Skip Authentication accounts that already exist instead of stopping the whole batch
+
+Required spreadsheet headers:
+
+```text
+Student ID | Name | Gender | Section
+```
+
+Accepted Gender values:
+
+```text
+Male
+Female
+M
+F
+```
+
+The app includes downloadable templates:
+
+```text
+G10_Student_Import_Template.xlsx
+G10_Student_Import_Template.csv
+```
+
+Excel parsing uses SheetJS in the Admin page. CSV importing has a built-in parser and can still work if the Excel parser CDN is unavailable.
+
+
+---
+
+# v5 — Automatic Section Directory
+
+The Admin Panel now automatically builds its Section list from the unique `section` values found in Firestore student profiles.
+
+Example:
+
+```text
+students/
+  uid1 → section: "GRADE 10 - ST. FAUSTINA"
+  uid2 → section: "GRADE 10 - ST. FAUSTINA"
+  uid3 → section: "GRADE 10 - ST. MAXIMILIAN KOLBE"
+```
+
+Admin dropdowns automatically show only:
+
+```text
+GRADE 10 - ST. FAUSTINA
+GRADE 10 - ST. MAXIMILIAN KOLBE
+```
+
+No duplicate section names are shown.
+
+The dynamic section list is used in:
+
+- Add One Student
+- Lesson Allowed Sections
+- Activity Allowed Sections
+- Student Profiles section filter
+- Compliance Sync section/sheet selector
+
+Bulk-imported students automatically update the Section Directory after import.
+
+For Add One Student, an admin can still select `+ Add new section` if the section does not exist yet.
+
+Lessons and Activities support:
+- All Sections
+- one section
+- multiple selected sections
+
+The Section Directory is derived from Firestore student profiles; no separate section database is required.

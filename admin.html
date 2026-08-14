@@ -11,6 +11,9 @@
   <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
   <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 
+  <!-- Free browser-side Excel/CSV parser for Admin bulk roster import. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <script defer src="firebase-config.js"></script>
   <script defer src="demo-data.js"></script>
   <script defer src="data-service.js"></script>
@@ -109,7 +112,13 @@
                 <select id="lessonTerm"><option>1</option><option>2</option><option>3</option></select>
               </label>
               <label><span>Display Order</span><input id="lessonOrder" type="number" min="1" value="1" required></label>
-              <label><span>Allowed Sections</span><input id="lessonSections" placeholder="GRADE 10 - A, GRADE 10 - B or *"></label>
+              <div class="admin-field">
+                <span class="field-label">Allowed Sections</span>
+                <details class="section-picker" id="lessonSectionPicker">
+                  <summary id="lessonSectionSummary">All Sections</summary>
+                  <div id="lessonSectionsOptions" class="section-picker-options"></div>
+                </details>
+              </div>
               <label><span>Google Drive File ID or URL</span><input id="lessonFileId"></label>
               <label><span>Optional file upload through Apps Script</span><input id="lessonFile" type="file" accept=".pdf,image/*"></label>
               <label class="check-row"><input id="lessonPublished" type="checkbox" checked> <span>Published</span></label>
@@ -143,7 +152,13 @@
               </label>
               <label><span>Display Order</span><input id="activityOrder" type="number" min="1" value="1" required></label>
               <label><span>Due Date</span><input id="activityDueDate" type="date"></label>
-              <label><span>Allowed Sections</span><input id="activitySections" placeholder="GRADE 10 - A, GRADE 10 - B or *"></label>
+              <div class="admin-field">
+                <span class="field-label">Allowed Sections</span>
+                <details class="section-picker" id="activitySectionPicker">
+                  <summary id="activitySectionSummary">All Sections</summary>
+                  <div id="activitySectionsOptions" class="section-picker-options"></div>
+                </details>
+              </div>
               <label><span>Google Drive File ID or URL</span><input id="activityFileId"></label>
               <label><span>Optional file upload through Apps Script</span><input id="activityFile" type="file" accept=".pdf,image/*,*/*"></label>
               <label class="check-row"><input id="activityPublished" type="checkbox" checked> <span>Published</span></label>
@@ -163,26 +178,83 @@
       </section>
 
       <section id="admin-page-students" class="admin-page">
-        <div class="admin-grid">
+        <div class="student-admin-layout">
           <article class="panel">
-            <h3>Add Student Account</h3>
-            <p>Creates a Firebase Email/Password user using a private-looking synthetic email based on Student ID, then writes the student's Firestore profile.</p>
+            <h3>Add One Student</h3>
+            <p>Create a single Firebase student account manually.</p>
 
             <form id="studentForm" class="admin-form">
               <label><span>Student ID</span><input id="newStudentId" required></label>
               <label><span>Full Name</span><input id="newStudentName" required></label>
-              <label><span>Section</span><input id="newStudentSection" required></label>
+              <label><span>Gender</span>
+                <select id="newStudentGender" required>
+                  <option value="">Select gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </label>
+              <label><span>Section</span>
+                <select id="newStudentSection" required>
+                  <option value="">Select section</option>
+                  <option value="__new__">+ Add new section</option>
+                </select>
+              </label>
+              <label id="newStudentSectionCustomWrap" class="hidden">
+                <span>New Section Name</span>
+                <input id="newStudentSectionCustom" placeholder="e.g. GRADE 10 - ST. FAUSTINA">
+              </label>
               <label><span>Initial Password</span><input id="newStudentPassword" value="123456" minlength="6" required></label>
               <button class="primary-btn" type="submit">CREATE STUDENT</button>
             </form>
             <div id="studentStatus" class="admin-status"></div>
           </article>
 
-          <article class="panel">
-            <h3>Student Profiles</h3>
-            <p>This is admin-only data. Students never download the whole section list.</p>
-            <div class="inline-actions" style="margin-bottom:12px;">
-              <button id="refreshStudentsAdmin" class="mini-btn">Refresh</button>
+          <article class="panel bulk-import-panel">
+            <h3>Bulk Import Students</h3>
+            <p>Upload an Excel or CSV roster. Required columns: <b>Student ID, Name, Gender, Section</b>.</p>
+
+            <div class="template-links">
+              <a class="mini-btn template-link" href="G10_Student_Import_Template.xlsx" download>Download Excel Template</a>
+              <a class="mini-btn template-link" href="G10_Student_Import_Template.csv" download>Download CSV Template</a>
+            </div>
+
+            <form id="bulkStudentForm" class="admin-form">
+              <label>
+                <span>Excel / CSV File</span>
+                <input id="bulkStudentFile" type="file" accept=".xlsx,.xls,.csv" required>
+              </label>
+              <label>
+                <span>Initial Password for Imported Students</span>
+                <input id="bulkStudentPassword" value="123456" minlength="6" required>
+              </label>
+              <button class="secondary-btn" type="submit">PREVIEW IMPORT</button>
+            </form>
+
+            <div id="bulkStudentStatus" class="admin-status"></div>
+
+            <div id="bulkPreviewWrap" class="bulk-preview hidden">
+              <div class="bulk-summary">
+                <div><small>VALID</small><strong id="bulkValidCount">0</strong></div>
+                <div><small>INVALID</small><strong id="bulkInvalidCount">0</strong></div>
+                <div><small>TOTAL</small><strong id="bulkTotalCount">0</strong></div>
+              </div>
+              <div id="bulkStudentPreview" class="table-wrap"></div>
+              <button id="bulkImportBtn" class="primary-btn" type="button" disabled>IMPORT VALID STUDENTS</button>
+            </div>
+          </article>
+
+          <article class="panel student-profiles-panel">
+            <div class="student-list-head">
+              <div>
+                <h3>Student Profiles</h3>
+                <p>This list is admin-only. Students never download the entire roster.</p>
+              </div>
+              <div class="student-list-controls">
+                <select id="studentSectionFilter" class="compact-select">
+                  <option value="*">All Sections</option>
+                </select>
+                <button id="refreshStudentsAdmin" class="mini-btn">Refresh</button>
+              </div>
             </div>
             <div id="adminStudentsList" class="admin-list"></div>
           </article>
@@ -196,7 +268,16 @@
             <p>Apps Script reads the selected Google Sheet once in a batch and returns a preview. Nothing student-facing changes during preview.</p>
 
             <form id="syncPreviewForm" class="admin-form">
-              <label><span>Sheet Name / Section</span><input id="syncSheetName" placeholder="e.g. G10-ST-FAUSTINA" required></label>
+              <label><span>Section / Sheet Name</span>
+                <select id="syncSheetName" required>
+                  <option value="">Select section</option>
+                  <option value="__custom__">Other sheet name…</option>
+                </select>
+              </label>
+              <label id="syncSheetCustomWrap" class="hidden">
+                <span>Custom Google Sheet Tab Name</span>
+                <input id="syncSheetCustom" placeholder="Exact sheet tab name">
+              </label>
               <label><span>Term</span>
                 <select id="syncTerm"><option>1</option><option>2</option><option>3</option></select>
               </label>
