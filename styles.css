@@ -4678,3 +4678,303 @@ html.phone-landscape-blocked body {
     font-size: 2.25rem;
   }
 }
+
+
+/* ============================================================
+   v11 — Phone login button + Compliance number circles
+   ============================================================ */
+
+/* Portal login button: intentional app-style control instead of
+   a plain full-width generic button. */
+.portal-login-btn {
+  position: relative;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid #101215;
+  border-radius: 14px;
+  background: #141619;
+  color: #fff;
+  box-shadow:
+    0 8px 20px rgba(18, 20, 24, .12),
+    inset 0 1px 0 rgba(255,255,255,.06);
+  font-weight: 950;
+  letter-spacing: .07em;
+}
+
+.portal-login-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: #c61024;
+}
+
+.portal-login-btn:hover {
+  background: #1c1f23;
+  transform: translateY(-1px);
+}
+
+.portal-login-btn:active {
+  transform: translateY(0);
+}
+
+.portal-login-btn-label,
+.portal-login-btn-arrow {
+  position: relative;
+  z-index: 1;
+}
+
+.portal-login-btn-arrow {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #c61024;
+  color: #fff;
+  font-size: .95rem;
+  line-height: 1;
+}
+
+.portal-login-btn[disabled] .portal-login-btn-arrow {
+  opacity: .55;
+}
+
+/* Desktop/tablet compliance counts also get the circular number treatment. */
+.compliance-summary #missingCount,
+.compliance-summary #totalTaskCount {
+  width: 58px;
+  height: 58px;
+  display: inline-grid;
+  place-items: center;
+  margin-top: 8px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1.8rem;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+
+.compliance-summary #missingCount {
+  background: #17191d;
+  color: #fff;
+}
+
+.compliance-summary #totalTaskCount {
+  background: #1769aa;
+  color: #fff;
+}
+
+/* Remove the previous red/gradient treatment from the entire Missing card.
+   The emphasis now comes from the black circular number only. */
+.compliance-summary > .compliance-summary-missing {
+  border-color: #e0e3e7;
+  background: #fff;
+}
+
+.compliance-summary-missing .card-kicker {
+  color: #737881;
+}
+
+.compliance-summary-missing::after {
+  background: rgba(0,0,0,.035) !important;
+}
+
+/* Total Tasks is also a clean white card; the blue circle carries the accent. */
+.compliance-summary > .compliance-summary-total {
+  border-color: #e0e3e7;
+  background: #fff;
+}
+
+@media (max-width: 760px) {
+  .portal-login-btn {
+    min-height: 48px;
+    border-radius: 13px;
+    box-shadow:
+      0 7px 18px rgba(18,20,24,.11),
+      inset 0 1px 0 rgba(255,255,255,.06);
+  }
+
+  .portal-login-btn-arrow {
+    width: 27px;
+    height: 27px;
+    border-radius: 8px;
+  }
+
+  /* Override older v9 card rules with the requested circle treatment. */
+  .compliance-summary > .compliance-summary-missing {
+    border-color: #e0e3e7;
+    background:
+      linear-gradient(145deg, #ffffff 0%, #f5f6f8 100%);
+  }
+
+  .compliance-summary-missing .card-kicker {
+    color: #737881;
+  }
+
+  .compliance-summary > .compliance-summary-total {
+    border-color: #e0e3e7;
+    background:
+      linear-gradient(145deg, #ffffff 0%, #f5f6f8 100%);
+  }
+
+  .compliance-summary #missingCount,
+  .compliance-summary #totalTaskCount {
+    width: clamp(58px, 17vw, 72px);
+    height: clamp(58px, 17vw, 72px);
+    margin-top: 8px;
+    font-size: clamp(1.9rem, 9vw, 2.55rem);
+    line-height: 1;
+    text-shadow: none;
+  }
+
+  .compliance-summary #missingCount {
+    background: #17191d;
+    color: #fff;
+  }
+
+  .compliance-summary #totalTaskCount {
+    background: #1769aa;
+    color: #fff;
+  }
+}
+
+@media (max-width: 390px) {
+  .portal-login-btn {
+    min-height: 46px;
+  }
+
+  .portal-login-btn-label {
+    font-size: .72rem;
+  }
+
+  .compliance-summary #missingCount,
+  .compliance-summary #totalTaskCount {
+    width: 58px;
+    height: 58px;
+    font-size: 1.9rem;
+  }
+}
+
+
+/* ============================================================
+   v12 — Final mobile Log out button
+   ============================================================ */
+
+/* Restore login to the normal portal primary button. */
+.portal-login-btn,
+.portal-login-btn-label,
+.portal-login-btn-arrow {
+  all: unset;
+}
+
+/* Phone-only Log out: compact black pill with a clear red exit mark. */
+@media (max-width: 760px) {
+  .mobile-logout-btn {
+    position: relative;
+    width: auto;
+    min-width: 84px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+    padding: 0 11px 0 7px;
+    overflow: hidden;
+    border: 1px solid #24272c;
+    border-radius: 11px;
+    background: #17191d;
+    color: #fff;
+    box-shadow: 0 5px 14px rgba(17, 19, 22, .12);
+    font-size: .64rem;
+    font-weight: 900;
+    letter-spacing: .01em;
+    white-space: nowrap;
+  }
+
+  .mobile-logout-btn::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+    pointer-events: none;
+  }
+
+  .mobile-logout-mark {
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 7px;
+    background: #c61024;
+    color: #fff;
+    font-size: .82rem;
+    font-weight: 950;
+    line-height: 1;
+    transform: rotate(180deg);
+  }
+
+  .mobile-logout-text {
+    display: inline;
+    color: #fff;
+    line-height: 1;
+  }
+
+  .mobile-logout-btn:hover,
+  .mobile-logout-btn:focus-visible {
+    border-color: #c61024;
+    background: #202328;
+    outline: none;
+  }
+
+  .mobile-logout-btn:active {
+    transform: translateY(1px);
+    background: #111316;
+  }
+}
+
+@media (max-width: 430px) {
+  .mobile-logout-btn {
+    min-width: 76px;
+    height: 36px;
+    gap: 6px;
+    padding: 0 9px 0 6px;
+    border-radius: 10px;
+    font-size: .59rem;
+  }
+
+  .mobile-logout-mark {
+    width: 23px;
+    height: 23px;
+    flex-basis: 23px;
+    border-radius: 7px;
+    font-size: .78rem;
+  }
+}
+
+@media (max-width: 350px) {
+  .mobile-logout-btn {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 10px;
+  }
+
+  .mobile-logout-mark {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
+  .mobile-logout-text {
+    display: none;
+  }
+}
