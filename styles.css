@@ -4147,3 +4147,278 @@ html.phone-landscape-blocked body {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* ============================================================
+   v8 — Student UI cleanup + compact Compliance mobile layout
+   ============================================================ */
+
+/* Page title already lives in the topbar, so the inner toolbar only
+   carries the action button and no duplicate page heading. */
+.section-toolbar-clean {
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 38px;
+  margin-bottom: 12px;
+}
+
+/* Compliance summary: make actual data visually dominant. */
+.compliance-summary {
+  background: #fff;
+  border: 1px solid #e0e3e7;
+}
+
+.compliance-summary-value {
+  color: #17191d;
+  font-weight: 950;
+  letter-spacing: -.025em;
+}
+
+.compliance-summary .compliance-summary-number {
+  margin-top: 3px;
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.compliance-summary .compliance-summary-term {
+  font-size: 1.15rem;
+}
+
+.compliance-summary .compliance-summary-date {
+  font-size: .88rem;
+  font-weight: 850;
+}
+
+/* Give the two most useful counts extra emphasis. */
+#missingCount {
+  color: #b20f1b;
+}
+
+#totalTaskCount {
+  color: #17191d;
+}
+
+/* Score numbers should stand out from the status text. */
+.term-assessment-score {
+  font-size: .78rem;
+  font-weight: 950;
+  letter-spacing: -.01em;
+}
+
+/* Slightly less vertical space overall even on tablet/desktop. */
+.compliance-row {
+  min-height: 68px;
+}
+
+.compliance-task {
+  padding: 11px 0;
+}
+
+.status-pill,
+.score-pill {
+  padding: 6px 9px;
+}
+
+@media (max-width: 760px) {
+  /* Summary becomes a compact 2x2 data panel instead of one long strip. */
+  .compliance-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .compliance-summary > div:not(.summary-dot) {
+    min-width: 0;
+    padding: 11px 12px;
+    border-bottom: 1px solid #eceef1;
+  }
+
+  .compliance-summary > div:not(.summary-dot):nth-of-type(1),
+  .compliance-summary > div:not(.summary-dot):nth-of-type(5) {
+    border-right: 1px solid #eceef1;
+  }
+
+  .compliance-summary > div:not(.summary-dot):nth-last-of-type(-n+2) {
+    border-bottom: 0;
+  }
+
+  .compliance-summary .summary-dot {
+    display: none;
+  }
+
+  .compliance-summary .card-kicker {
+    font-size: .55rem;
+  }
+
+  .compliance-summary .compliance-summary-number {
+    font-size: 1.6rem;
+  }
+
+  .compliance-summary .compliance-summary-term {
+    font-size: 1.05rem;
+  }
+
+  .compliance-summary .compliance-summary-date {
+    font-size: .72rem;
+    line-height: 1.25;
+  }
+
+  /* Compact phone task row:
+     task + status remain on the same row, instead of status falling below. */
+  .compliance-list {
+    gap: 7px;
+  }
+
+  .compliance-row {
+    grid-template-columns: 4px minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 56px;
+    padding-right: 8px;
+    border-radius: 10px;
+  }
+
+  .compliance-task {
+    min-width: 0;
+    padding: 8px 0;
+  }
+
+  .compliance-task small {
+    font-size: .53rem;
+    line-height: 1.1;
+  }
+
+  .compliance-task strong {
+    margin-top: 3px;
+    font-size: .78rem;
+    line-height: 1.15;
+  }
+
+  .compliance-status {
+    grid-column: 3;
+    align-self: center;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    padding: 0;
+  }
+
+  .status-pill,
+  .score-pill {
+    padding: 5px 7px;
+    font-size: .56rem;
+    line-height: 1;
+  }
+
+  .term-assessment-score {
+    font-size: .62rem;
+  }
+
+  /* Missing tasks: reduce tall rectangular cards on phones. */
+  .missing-card {
+    margin-bottom: 12px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .missing-card-head {
+    gap: 10px;
+    margin-bottom: 9px;
+  }
+
+  .missing-card-head h3 {
+    margin-top: 3px;
+    font-size: .9rem;
+  }
+
+  .missing-count-badge {
+    min-width: 34px;
+    height: 34px;
+    padding: 0 9px;
+    font-size: .82rem;
+  }
+
+  .missing-requirements-list {
+    gap: 6px;
+  }
+
+  .missing-item {
+    grid-template-columns: 25px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 9px;
+    border-radius: 9px;
+  }
+
+  .missing-item-icon {
+    width: 24px;
+    height: 24px;
+    font-size: .7rem;
+  }
+
+  .missing-item-text strong {
+    font-size: .75rem;
+    line-height: 1.15;
+  }
+
+  .missing-item-text small {
+    margin-top: 2px;
+    font-size: .6rem;
+    line-height: 1.2;
+  }
+
+  .missing-status {
+    grid-column: 3;
+    justify-self: end;
+    padding: 5px 7px;
+    font-size: .53rem;
+  }
+
+  .all-status-heading {
+    margin: 15px 0 8px;
+  }
+
+  .all-status-heading h3 {
+    margin-top: 3px;
+    font-size: .92rem;
+  }
+
+  .compliance-color-guide {
+    margin: 10px 0 12px;
+    padding: 12px;
+  }
+
+  .color-guide-item {
+    padding: 7px 8px;
+  }
+}
+
+@media (max-width: 390px) {
+  .compliance-row {
+    grid-template-columns: 4px minmax(0, 1fr) auto;
+    gap: 6px;
+    min-height: 52px;
+  }
+
+  .compliance-task strong {
+    max-width: 100%;
+    font-size: .73rem;
+  }
+
+  .status-pill,
+  .score-pill {
+    padding: 4px 6px;
+    font-size: .52rem;
+  }
+
+  .missing-item {
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    padding: 7px 8px;
+  }
+
+  .missing-item-icon {
+    width: 22px;
+    height: 22px;
+  }
+}
