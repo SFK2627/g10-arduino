@@ -200,86 +200,71 @@
           <button class="quick-card goto-page" data-page="announcements">
             <span class="quick-no">01</span>
             <strong>Announcements</strong>
-            <small>Class updates and reminders</small>
+            <small>View class posts</small>
           </button>
           <button class="quick-card goto-page" data-page="lessons">
             <span class="quick-no">02</span>
             <strong>Lessons</strong>
-            <small>Load metadata only</small>
+            <small>View learning materials</small>
           </button>
           <button class="quick-card goto-page" data-page="activities">
             <span class="quick-no">03</span>
             <strong>Activities</strong>
-            <small>Files open on demand</small>
+            <small>View assigned tasks</small>
           </button>
           <button class="quick-card goto-page" data-page="compliance">
             <span class="quick-no">04</span>
             <strong>Compliance</strong>
-            <small>Your record only</small>
+            <small>Check your status</small>
           </button>
         </div>
       </section>
 
       <section id="page-announcements" class="page">
-        <div class="section-toolbar">
-          <div>
-            <h3>Announcements</h3>
-            <p>Updates and reminders published for your section.</p>
-          </div>
+        <div class="section-toolbar section-toolbar-clean">
           <button class="refresh-btn" data-refresh="announcements">Refresh</button>
         </div>
         <div id="announcementsList" class="announcement-feed"></div>
       </section>
 
       <section id="page-lessons" class="page">
-        <div class="section-toolbar">
-          <div>
-            <h3>Lesson Viewer</h3>
-            <p>Only lesson details are loaded first. PDFs stay in Google Drive until you open one.</p>
-          </div>
+        <div class="section-toolbar section-toolbar-clean">
           <button class="refresh-btn" data-refresh="lessons">Refresh</button>
         </div>
         <div id="lessonsList" class="content-grid"></div>
       </section>
 
       <section id="page-activities" class="page">
-        <div class="section-toolbar">
-          <div>
-            <h3>Activity Viewer</h3>
-            <p>Activity metadata loads first; attachments remain unloaded until selected.</p>
-          </div>
+        <div class="section-toolbar section-toolbar-clean">
           <button class="refresh-btn" data-refresh="activities">Refresh</button>
         </div>
         <div id="activitiesList" class="content-grid"></div>
       </section>
 
       <section id="page-compliance" class="page">
-        <div class="section-toolbar">
-          <div>
-            <h3>Compliance Status</h3>
-          </div>
+        <div class="section-toolbar section-toolbar-clean">
           <button class="refresh-btn" data-refresh="compliance">Refresh</button>
         </div>
 
         <article class="compliance-summary">
           <div>
             <span class="card-kicker">LAST UPDATED</span>
-            <strong id="complianceUpdated">Not yet published</strong>
+            <strong id="complianceUpdated" class="compliance-summary-value compliance-summary-date">Not yet published</strong>
           </div>
           <div class="summary-dot"></div>
           <div>
             <span class="card-kicker">TERM</span>
-            <strong id="complianceTerm">Term 1</strong>
+            <strong id="complianceTerm" class="compliance-summary-value compliance-summary-term">Term 1</strong>
           </div>
           <div class="summary-dot"></div>
           <div>
             <span class="card-kicker">MISSING</span>
-            <strong id="missingCount">—</strong>
+            <strong id="missingCount" class="compliance-summary-value compliance-summary-number">—</strong>
           </div>
           <div class="summary-dot"></div>
           <div>
             <span class="card-kicker">TOTAL TASKS</span>
-            <strong id="totalTaskCount">—</strong>
+            <strong id="totalTaskCount" class="compliance-summary-value compliance-summary-number">—</strong>
           </div>
         </article>
 
@@ -302,7 +287,7 @@
         <section id="missingRequirementsCard" class="missing-card hidden">
           <div class="missing-card-head">
             <div>
-              <span class="card-kicker">MGA KULANG / MISSING REQUIREMENTS</span>
+              <span class="card-kicker">MISSING TASKS</span>
               <h3 id="missingHeading">Requirements to complete</h3>
             </div>
             <span id="missingBadge" class="missing-count-badge">0</span>
@@ -312,8 +297,8 @@
 
         <div class="all-status-heading">
           <div>
-            <span class="card-kicker">ALL REQUIREMENTS</span>
-            <h3>Complete Compliance List</h3>
+            <span class="card-kicker">ALL TASKS</span>
+            <h3>Task Status</h3>
           </div>
         </div>
 
