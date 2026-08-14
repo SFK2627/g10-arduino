@@ -135,6 +135,10 @@
             <option value="2">Term 2</option>
             <option value="3">Term 3</option>
           </select>
+          <button id="mobileLogoutBtn" class="mobile-logout-btn" type="button" aria-label="Log out">
+            <span class="mobile-logout-mark" aria-hidden="true">↪</span>
+            <span class="mobile-logout-text">Log out</span>
+          </button>
         </div>
       </header>
 
@@ -247,22 +251,22 @@
         </div>
 
         <article class="compliance-summary">
-          <div>
+          <div class="compliance-summary-item compliance-summary-updated">
             <span class="card-kicker">LAST UPDATED</span>
             <strong id="complianceUpdated" class="compliance-summary-value compliance-summary-date">Not yet published</strong>
           </div>
           <div class="summary-dot"></div>
-          <div>
+          <div class="compliance-summary-item compliance-summary-term-card">
             <span class="card-kicker">TERM</span>
             <strong id="complianceTerm" class="compliance-summary-value compliance-summary-term">Term 1</strong>
           </div>
           <div class="summary-dot"></div>
-          <div>
+          <div class="compliance-summary-item compliance-summary-missing">
             <span class="card-kicker">MISSING</span>
             <strong id="missingCount" class="compliance-summary-value compliance-summary-number">—</strong>
           </div>
           <div class="summary-dot"></div>
-          <div>
+          <div class="compliance-summary-item compliance-summary-total">
             <span class="card-kicker">TOTAL TASKS</span>
             <strong id="totalTaskCount" class="compliance-summary-value compliance-summary-number">—</strong>
           </div>

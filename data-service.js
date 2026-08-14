@@ -612,13 +612,25 @@
 
     let snap;
 
-    // Compliance is a published teacher snapshot, so prefer a fresh server
-    // read. If the network is unavailable, Firestore may still use its
-    // regular local cache as a fallback.
+    // Prefer a fresh server read. If Firebase has a stale auth token,
+    // refresh it once before falling back to Firestore's normal read path.
     try {
       snap = await ref.get({ source: "server" });
     } catch (serverError) {
-      snap = await ref.get();
+      if (
+        serverError &&
+        String(serverError.code || "").includes("permission-denied") &&
+        auth?.currentUser
+      ) {
+        try {
+          await auth.currentUser.getIdToken(true);
+          snap = await ref.get({ source: "server" });
+        } catch (_) {
+          snap = await ref.get();
+        }
+      } else {
+        snap = await ref.get();
+      }
     }
 
     const result = snap.exists

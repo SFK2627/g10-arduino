@@ -2733,9 +2733,17 @@
             continue;
           }
 
-          // Same reliable pattern used by the working Code Editor Compliance:
-          // the published document key comes from Student ID itself.
+          // Student ID remains the stable document key.
           const studentAuthEmail = G10DataService.studentIdToEmail(normalizedStudentId);
+
+          // Also bind the snapshot to the student's Firebase UID.
+          // This makes the read rule independent of synthetic-email formatting.
+          const matchingStudent = cachedStudentProfiles.find(student =>
+            G10DataService.normalizeStudentId(student.studentId)
+              === normalizedStudentId
+          );
+
+          const studentUid = String(matchingStudent?.uid || "").trim();
 
           const tasks = Array.isArray(row.tasks) ? row.tasks : [];
           const missingCount = tasks.filter(task => task && task.missing === true).length;
@@ -2750,6 +2758,7 @@
             studentId: normalizedStudentId,
             studentIdOriginal: rawStudentId,
             studentAuthEmail,
+            studentUid,
             fullName: String(row.fullName || "").trim(),
             term: Number(payload.term),
             section: normalizedSection,

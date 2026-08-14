@@ -51,6 +51,7 @@
     $("#demoBtn").addEventListener("click", () => loginDemo());
     $("#togglePassword").addEventListener("click", togglePassword);
     $("#logoutBtn").addEventListener("click", logout);
+    $("#mobileLogoutBtn").addEventListener("click", logout);
     $("#passwordChangeForm").addEventListener("submit", handlePasswordChange);
     $("#passwordChangeLogoutBtn").addEventListener("click", logoutFromPasswordChange);
 
@@ -657,9 +658,9 @@
     const titles = {
       dashboard: ["Student Portal", "Dashboard"],
       announcements: ["Class Updates", "Announcements"],
-      lessons: ["Learning Materials", "Lessons"],
-      activities: ["Performance Tasks", "Activities"],
-      compliance: ["Published Snapshot", "Compliance"]
+      lessons: ["ICT 10", "Lessons"],
+      activities: ["ICT 10", "Activities"],
+      compliance: ["ICT 10", "Compliance"]
     };
 
     $("#pageEyebrow").textContent = titles[page][0];
@@ -766,7 +767,7 @@
 
   async function loadCompliance() {
     const target = $("#complianceList");
-    target.innerHTML = `<div class="loading-line">Loading your published compliance record…</div>`;
+    target.innerHTML = `<div class="loading-line">Loading compliance status…</div>`;
 
     try {
       const record = await G10DataService.getCompliance(profile.studentId, currentTerm, true);
@@ -785,9 +786,9 @@
         $("#missingBadge").textContent = "0";
         $("#missingRequirementsList").innerHTML = `
           <div class="complete-message neutral">
-            Your teacher has not published the compliance list for this term yet.
+            No task status is available for this term yet.
           </div>`;
-        target.innerHTML = emptyState("No status published yet", "Your teacher has not published compliance data for this term.");
+        target.innerHTML = emptyState("No status published yet", "No task status is available for this term yet.");
         return;
       }
 
@@ -921,9 +922,9 @@
     return false;
   }
 
-  function missingReason(task) {
-    if (task && task.missingReason) return String(task.missingReason);
-    return "No score recorded yet.";
+  function missingReason() {
+    // Student UI intentionally hides source-system / class-record details.
+    return "No score yet.";
   }
 
 
@@ -952,7 +953,7 @@
       body.innerHTML = `
         <div class="viewer-demo-message">
           <strong>Demo item</strong>
-          <p>No Google Drive file ID is attached to this demo record yet.</p>
+          <p>No Google Drive file is attached here yet.</p>
           <p>In live mode, the selected PDF/image/file will load here only after this button is clicked.</p>
         </div>`;
       return;

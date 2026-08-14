@@ -4422,3 +4422,259 @@ html.phone-landscape-blocked body {
     height: 22px;
   }
 }
+
+
+/* ============================================================
+   v9 — Mobile logout + premium Compliance summary
+   ============================================================ */
+
+/* Desktop keeps using the sidebar logout button. */
+.mobile-logout-btn {
+  display: none;
+}
+
+/* Compliance summary item hooks */
+.compliance-summary-item {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  /* Always-available logout on phone */
+  .top-actions {
+    flex: 0 0 auto;
+  }
+
+  .mobile-logout-btn {
+    width: auto;
+    min-width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 10px;
+    border: 1px solid #d9dce1;
+    border-radius: 10px;
+    background: #fff;
+    color: #2a2d32;
+    font-size: .65rem;
+    font-weight: 900;
+    white-space: nowrap;
+    box-shadow: 0 3px 10px rgba(20,22,26,.04);
+  }
+
+  .mobile-logout-btn:active {
+    transform: translateY(1px);
+    background: #f2f3f5;
+  }
+
+  .mobile-logout-mark {
+    color: #b20f1b;
+    font-size: .9rem;
+    line-height: 1;
+    transform: rotate(180deg);
+  }
+
+  /* Premium 2x2 Compliance status dashboard */
+  .compliance-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 9px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .compliance-summary .summary-dot {
+    display: none;
+  }
+
+  .compliance-summary > .compliance-summary-item {
+    position: relative;
+    min-height: 105px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 13px 14px;
+    border: 1px solid #e0e3e7;
+    border-radius: 15px;
+    background: #fff;
+    box-shadow: 0 7px 22px rgba(20,22,26,.055);
+    overflow: hidden;
+  }
+
+  .compliance-summary > .compliance-summary-item::after {
+    content: "";
+    position: absolute;
+    width: 54px;
+    height: 54px;
+    right: -18px;
+    bottom: -18px;
+    border-radius: 50%;
+    background: rgba(0,0,0,.035);
+    pointer-events: none;
+  }
+
+  .compliance-summary .card-kicker {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    color: #737881;
+    font-size: .56rem;
+    font-weight: 950;
+    letter-spacing: .09em;
+  }
+
+  .compliance-summary .compliance-summary-value {
+    position: relative;
+    z-index: 1;
+    display: block;
+    margin-top: 9px;
+    color: #17191d;
+    font-weight: 950;
+    letter-spacing: -.045em;
+  }
+
+  /* Last Updated: calm light card */
+  .compliance-summary-updated {
+    background:
+      linear-gradient(145deg, #ffffff 0%, #f5f6f8 100%) !important;
+  }
+
+  .compliance-summary .compliance-summary-date {
+    max-width: 100%;
+    font-size: clamp(.85rem, 3.8vw, 1.03rem);
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+
+  /* Term: black card so selected term is immediately visible */
+  .compliance-summary > .compliance-summary-term-card {
+    border-color: #202328;
+    background:
+      linear-gradient(145deg, #24272c 0%, #111316 100%);
+  }
+
+  .compliance-summary-term-card .card-kicker {
+    color: #b9bec6;
+  }
+
+  .compliance-summary .compliance-summary-term {
+    color: #fff;
+    font-size: clamp(1.45rem, 7vw, 2rem);
+    line-height: .95;
+    text-transform: uppercase;
+  }
+
+  .compliance-summary-term-card::after {
+    background: rgba(255,255,255,.07) !important;
+  }
+
+  /* Missing: strongest red signal */
+  .compliance-summary > .compliance-summary-missing {
+    border-color: #d7192d;
+    background:
+      linear-gradient(145deg, #d7192d 0%, #a70d1c 100%);
+  }
+
+  .compliance-summary-missing .card-kicker {
+    color: rgba(255,255,255,.78);
+  }
+
+  .compliance-summary #missingCount {
+    color: #fff;
+    font-size: clamp(2.35rem, 12vw, 3.2rem);
+    line-height: .82;
+    text-shadow: 0 2px 9px rgba(0,0,0,.10);
+  }
+
+  .compliance-summary-missing::after {
+    background: rgba(255,255,255,.12) !important;
+  }
+
+  /* Total Tasks: large black number on bright card */
+  .compliance-summary > .compliance-summary-total {
+    border-color: #cfd3d8;
+    background:
+      linear-gradient(145deg, #ffffff 0%, #eceef1 100%);
+  }
+
+  .compliance-summary #totalTaskCount {
+    color: #17191d;
+    font-size: clamp(2.35rem, 12vw, 3.2rem);
+    line-height: .82;
+  }
+
+  /* Give the status area breathing room from the color legend. */
+  .compliance-color-guide {
+    margin-top: 14px;
+  }
+}
+
+@media (max-width: 430px) {
+  /* Keep the phone topbar usable even with Term + Logout together. */
+  .topbar {
+    gap: 8px;
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .topbar > div:first-child {
+    min-width: 0;
+  }
+
+  .topbar h2 {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .top-actions {
+    gap: 6px;
+  }
+
+  .term-select {
+    min-width: 78px;
+    width: 78px;
+    height: 36px;
+    padding-left: 8px;
+    padding-right: 22px;
+    font-size: .66rem;
+  }
+
+  .mobile-logout-btn {
+    height: 36px;
+    padding: 0 8px;
+    font-size: .61rem;
+  }
+
+  .compliance-summary {
+    gap: 8px;
+  }
+
+  .compliance-summary > .compliance-summary-item {
+    min-height: 100px;
+    padding: 12px;
+    border-radius: 14px;
+  }
+}
+
+@media (max-width: 350px) {
+  /* Very narrow phones still retain a clearly identifiable logout action. */
+  .mobile-logout-text {
+    display: none;
+  }
+
+  .mobile-logout-btn {
+    width: 36px;
+    min-width: 36px;
+    padding: 0;
+  }
+
+  .compliance-summary #missingCount,
+  .compliance-summary #totalTaskCount {
+    font-size: 2.25rem;
+  }
+}
