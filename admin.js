@@ -65,6 +65,8 @@
     $("#settingsForm").addEventListener("submit", saveSettings);
     $("#lessonForm").addEventListener("submit", saveLesson);
     $("#activityForm").addEventListener("submit", saveActivity);
+    $("#activityFile").addEventListener("change", renderActivityAttachmentSelection);
+    $("#activityFileId").addEventListener("input", renderActivityAttachmentSelection);
     $("#announcementForm").addEventListener("submit", saveAnnouncement);
     $("#cancelAnnouncementEditBtn").addEventListener("click", resetAnnouncementForm);
     $("#refreshAnnouncementsAdmin").addEventListener("click", loadAdminAnnouncements);
@@ -538,8 +540,7 @@
     return result;
   }
 
-  async function maybeUploadFile(input, category) {
-    const file = input.files && input.files[0];
+  async function uploadFileObject(file, category) {
     if (!file) return null;
 
     if (!String(G10_CONFIG.appsScriptUrl || "").trim()) {
@@ -547,7 +548,10 @@
     }
 
     if (file.size > 8 * 1024 * 1024) {
-      throw new Error("For this simple browser-to-Apps-Script uploader, keep uploads at 8 MB or less. Larger files can be uploaded directly to Drive and then referenced by File ID.");
+      throw new Error(
+        `${file.name}: keep each browser-to-Apps-Script upload at 8 MB or less. ` +
+        `Larger files can be uploaded directly to Drive and then referenced by File ID.`
+      );
     }
 
     const base64 = await fileToBase64(file);
@@ -560,6 +564,141 @@
     });
 
     return result.file;
+  }
+
+  async function maybeUploadFile(input, category) {
+    const file = input.files && input.files[0];
+    return uploadFileObject(file, category);
+  }
+
+  function activityManualDriveIds() {
+    const raw = String($("#activityFileId")?.value || "");
+
+    return raw
+      .split(/[\n,]+/)
+      .map(value => G10DataService.extractDriveFileId(value))
+      .map(value => String(value || "").trim())
+      .filter(Boolean);
+  }
+
+  function selectedActivityFiles() {
+    return Array.from($("#activityFile")?.files || []);
+  }
+
+  function validateActivityAttachmentCount(manualIds, files) {
+    const total = manualIds.length + files.length;
+
+    if (manualIds.length > 5) {
+      throw new Error("Maximum 5 Activity attachments only. You pasted more than 5 Drive files.");
+    }
+
+    if (files.length > 5) {
+      throw new Error("Maximum 5 Activity attachments only. Please select no more than 5 files.");
+    }
+
+    if (total > 5) {
+      throw new Error(
+        `Maximum 5 Activity attachments only. You currently have ${manualIds.length} Drive link(s) + ${files.length} uploaded file(s).`
+      );
+    }
+  }
+
+  function formatUploadBytes(bytes) {
+    const value = Number(bytes || 0);
+    if (!Number.isFinite(value) || value <= 0) return "File";
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${Math.round(value / 102.4) / 10} KB`;
+    return `${Math.round(value / (1024 * 102.4)) / 10} MB`;
+  }
+
+  function renderActivityAttachmentSelection() {
+    const target = $("#activityAttachmentSelection");
+    if (!target) return;
+
+    const manualIds = activityManualDriveIds();
+    const files = selectedActivityFiles();
+    const total = manualIds.length + files.length;
+
+    target.classList.toggle("limit-exceeded", total > 5);
+
+    if (!total) {
+      target.innerHTML = "No files selected.";
+      return;
+    }
+
+    const rows = [
+      ...manualIds.map((fileId, index) => ({
+        label: `Drive attachment ${index + 1}`,
+        detail: fileId
+      })),
+      ...files.map(file => ({
+        label: file.name,
+        detail: `${formatUploadBytes(file.size)}${file.type ? ` • ${file.type}` : ""}`
+      }))
+    ];
+
+    target.innerHTML = `
+      <div class="activity-attachment-selection-head">
+        <strong>${total} / 5 attachment${total === 1 ? "" : "s"}</strong>
+        ${total > 5 ? "<span>Too many files</span>" : ""}
+      </div>
+      <div class="activity-attachment-selection-list">
+        ${rows.map(row => `
+          <div>
+            <strong>${escapeHtml(row.label)}</strong>
+            <small>${escapeHtml(row.detail)}</small>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  async function buildActivityAttachments() {
+    const manualIds = activityManualDriveIds();
+    const files = selectedActivityFiles();
+
+    // Validate before upload so no unnecessary Drive files are created.
+    validateActivityAttachmentCount(manualIds, files);
+
+    const attachments = [];
+    const seenIds = new Set();
+
+    manualIds.forEach((fileId, index) => {
+      if (seenIds.has(fileId)) return;
+      seenIds.add(fileId);
+
+      attachments.push({
+        fileId,
+        fileName: `Google Drive attachment ${index + 1}`,
+        fileType: "application/octet-stream",
+        fileSize: null,
+        source: "drive"
+      });
+    });
+
+    if (attachments.length + files.length > 5) {
+      throw new Error("Maximum 5 unique Activity attachments only.");
+    }
+
+    for (const file of files) {
+      const uploaded = await uploadFileObject(file, "activities");
+      if (!uploaded?.fileId || seenIds.has(uploaded.fileId)) continue;
+
+      seenIds.add(uploaded.fileId);
+      attachments.push({
+        fileId: uploaded.fileId,
+        fileName: uploaded.fileName || file.name,
+        fileType: uploaded.fileType || file.type || "application/octet-stream",
+        fileSize: uploaded.fileSize ?? file.size ?? null,
+        source: "upload"
+      });
+    }
+
+    if (attachments.length > 5) {
+      throw new Error("Maximum 5 Activity attachments only.");
+    }
+
+    return attachments;
   }
 
 
@@ -1033,7 +1172,7 @@
 
         await ref.update({
           published: nextPublished,
-          feedVersion: 2,
+          feedVersion: materialFeedVersion(btn.dataset.collection),
           updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
           feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -1273,6 +1412,10 @@
     return collectionName === "activities" ? "activityFeeds" : "lessonFeeds";
   }
 
+  function materialFeedVersion(collectionName) {
+    return collectionName === "activities" ? 3 : 2;
+  }
+
   function materialFeedTargets(allowedSections) {
     const sections = Array.isArray(allowedSections) && allowedSections.length
       ? allowedSections
@@ -1338,16 +1481,18 @@
 
   async function repairMaterialFeedIfNeeded(collectionName, item) {
     if (!item || !item.id) return;
-    if (item.feedVersion === 2) return;
+
+    const expectedFeedVersion = materialFeedVersion(collectionName);
+    if (item.feedVersion === expectedFeedVersion) return;
 
     await syncMaterialFeeds(collectionName, item.id, item);
 
     await db.collection(collectionName).doc(item.id).set({
-      feedVersion: 2,
+      feedVersion: expectedFeedVersion,
       feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
-    item.feedVersion = 1;
+    item.feedVersion = expectedFeedVersion;
   }
 
   async function saveLesson(e) {
@@ -1405,18 +1550,8 @@
     setStatus("#activityStatus", "Saving activity…");
 
     try {
-      let fileId = G10DataService.extractDriveFileId($("#activityFileId").value);
-      let fileName = "";
-      let fileType = "application/pdf";
-      let fileSize = null;
-
-      const uploaded = await maybeUploadFile($("#activityFile"), "activities");
-      if (uploaded) {
-        fileId = uploaded.fileId;
-        fileName = uploaded.fileName;
-        fileType = uploaded.fileType;
-        fileSize = uploaded.fileSize;
-      }
+      const attachments = await buildActivityAttachments();
+      const firstAttachment = attachments[0] || null;
 
       const payload = {
         title: $("#activityTitle").value.trim(),
@@ -1425,26 +1560,44 @@
         order: Number($("#activityOrder").value),
         dueDate: $("#activityDueDate").value || "",
         allowedSections: getSelectedSections("activity"),
-        fileId,
-        fileName,
-        fileType,
-        fileSize,
+
+        // New Activity attachment schema: zero to five file metadata objects.
+        attachments,
+
+        // Legacy fields stay populated with the first file so existing code
+        // and old records remain compatible.
+        fileId: firstAttachment?.fileId || "",
+        fileName: firstAttachment?.fileName || "",
+        fileType: firstAttachment?.fileType || "",
+        fileSize: firstAttachment?.fileSize ?? null,
+
         published: $("#activityPublished").checked,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
 
       const ref = await db.collection("activities").add(payload);
       await syncMaterialFeeds("activities", ref.id, payload);
+
       await ref.set({
-        feedVersion: 2,
+        feedVersion: materialFeedVersion("activities"),
+        attachmentSchemaVersion: 2,
         feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
+
       await refreshDashboardLatest("activities");
+
       $("#activityForm").reset();
       $("#activityTerm").value = "1";
       $("#activityOrder").value = "1";
       $("#activityPublished").checked = true;
-      setStatus("#activityStatus", `Activity saved: ${ref.id}`, true);
+      renderActivityAttachmentSelection();
+
+      setStatus(
+        "#activityStatus",
+        `Activity saved with ${attachments.length} attachment${attachments.length === 1 ? "" : "s"}: ${ref.id}`,
+        true
+      );
+
       await loadAdminActivities();
     } catch (err) {
       setStatus("#activityStatus", err.message, false);
@@ -1579,12 +1732,41 @@
     }
   }
 
+  function normalizeAdminActivityAttachments(item) {
+    const attachments = Array.isArray(item?.attachments)
+      ? item.attachments
+          .filter(file => file && file.fileId)
+          .slice(0, 5)
+      : [];
+
+    if (attachments.length) return attachments;
+
+    if (item?.fileId) {
+      return [{
+        fileId: item.fileId,
+        fileName: item.fileName || "Google Drive attachment",
+        fileType: item.fileType || "",
+        fileSize: item.fileSize ?? null
+      }];
+    }
+
+    return [];
+  }
+
   function adminItem(x, collection) {
+    const activityAttachments = collection === "activities"
+      ? normalizeAdminActivityAttachments(x)
+      : [];
+
+    const attachmentMeta = collection === "activities"
+      ? ` • ${activityAttachments.length} file${activityAttachments.length === 1 ? "" : "s"}`
+      : "";
+
     return `
       <div class="admin-list-item">
         <div>
           <strong>${escapeHtml(x.title || "Untitled")}</strong>
-          <small>Term ${escapeHtml(x.term)} • Order ${escapeHtml(x.order)} • ${x.published ? "Published" : "Hidden"}</small>
+          <small>Term ${escapeHtml(x.term)} • Order ${escapeHtml(x.order)} • ${x.published ? "Published" : "Hidden"}${attachmentMeta}</small>
         </div>
         <div class="inline-actions">
           <button class="mini-btn admin-toggle" data-collection="${collection}" data-id="${x.id}" data-published="${x.published ? "1" : "0"}">${x.published ? "Unpublish" : "Publish"}</button>

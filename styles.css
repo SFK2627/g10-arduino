@@ -6866,3 +6866,233 @@ button {
     width: calc(100vw - 14px);
   }
 }
+
+
+/* ============================================================
+   v20 — Activities: maximum 5 attachments
+   ============================================================ */
+
+.activity-attachments-admin-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dfe2e6;
+  border-radius: 12px;
+  background: #f8f9fa;
+}
+
+.activity-attachments-admin-box > .field-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activity-attachments-admin-box > .field-label small,
+.activity-attachments-admin-box label > span small {
+  color: #858a91;
+  font-size: .58rem;
+  font-weight: 750;
+}
+
+.activity-attachment-selection {
+  padding: 9px 10px;
+  border: 1px dashed #d2d6db;
+  border-radius: 9px;
+  background: #fff;
+  color: #777c84;
+  font-size: .65rem;
+}
+
+.activity-attachment-selection.limit-exceeded {
+  border-color: #d99aa3;
+  background: #fff3f4;
+  color: #9f1221;
+}
+
+.activity-attachment-selection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.activity-attachment-selection-head strong {
+  color: #272a2f;
+  font-size: .66rem;
+}
+
+.activity-attachment-selection-head span {
+  color: #ae1020;
+  font-size: .58rem;
+  font-weight: 900;
+}
+
+.activity-attachment-selection-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.activity-attachment-selection-list > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  padding: 6px 7px;
+  border-radius: 7px;
+  background: #f5f6f7;
+}
+
+.activity-attachment-selection-list strong,
+.activity-attachment-selection-list small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-attachment-selection-list strong {
+  color: #24272c;
+  font-size: .61rem;
+}
+
+.activity-attachment-selection-list small {
+  color: #80858d;
+  font-size: .54rem;
+}
+
+.activity-attachments {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid #e6e8eb;
+}
+
+.activity-attachments-head {
+  margin-bottom: 7px;
+}
+
+.activity-attachments-head small {
+  color: #747981;
+  font-size: .58rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.activity-attachment-buttons {
+  display: grid;
+  gap: 7px;
+}
+
+.activity-file-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 9px;
+  border: 1px solid #dfe2e6;
+  border-radius: 10px;
+  background: #fff;
+  color: #24272c;
+  text-align: left;
+  cursor: pointer;
+}
+
+.activity-file-button:hover,
+.activity-file-button:focus-visible {
+  border-color: #b7bcc3;
+  background: #f8f9fa;
+  outline: none;
+}
+
+.activity-file-index {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #17191d;
+  color: #fff;
+  font-size: .64rem;
+  font-weight: 950;
+}
+
+.activity-file-copy {
+  min-width: 0;
+}
+
+.activity-file-copy strong,
+.activity-file-copy small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-file-copy strong {
+  color: #202328;
+  font-size: .66rem;
+  font-weight: 900;
+}
+
+.activity-file-copy small {
+  margin-top: 2px;
+  color: #7d828a;
+  font-size: .53rem;
+  font-weight: 700;
+}
+
+.activity-file-open {
+  color: #a61020;
+  font-size: .54rem;
+  font-weight: 950;
+  letter-spacing: .05em;
+}
+
+.activity-no-attachment {
+  margin-top: 12px;
+  padding: 8px 9px;
+  border-radius: 9px;
+  background: #f5f6f7;
+  color: #858a91;
+}
+
+@media (max-width: 760px) {
+  .activity-attachments-admin-box {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .activity-attachment-selection {
+    padding: 8px;
+  }
+
+  .activity-file-button {
+    min-height: 44px;
+    grid-template-columns: 25px minmax(0, 1fr) auto;
+    gap: 7px;
+    padding: 7px 8px;
+    border-radius: 9px;
+  }
+
+  .activity-file-index {
+    width: 25px;
+    height: 25px;
+    border-radius: 7px;
+    font-size: .58rem;
+  }
+
+  .activity-file-copy strong {
+    font-size: .62rem;
+  }
+
+  .activity-file-copy small,
+  .activity-file-open {
+    font-size: .5rem;
+  }
+}

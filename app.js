@@ -757,6 +757,70 @@
     }
   }
 
+  function normalizeActivityAttachments(item) {
+    const attachments = Array.isArray(item?.attachments)
+      ? item.attachments
+          .filter(file => file && file.fileId)
+          .slice(0, 5)
+      : [];
+
+    if (attachments.length) return attachments;
+
+    // Backward compatibility for Activities made before multi-file support.
+    if (item?.fileId) {
+      return [{
+        fileId: item.fileId,
+        fileName: item.fileName || "Google Drive attachment",
+        fileType: item.fileType || "",
+        fileSize: item.fileSize ?? null
+      }];
+    }
+
+    return [];
+  }
+
+  function activityAttachmentsHtml(item) {
+    const attachments = normalizeActivityAttachments(item);
+
+    if (!attachments.length) {
+      return `
+        <div class="activity-no-attachment">
+          <small>No attachment for this activity.</small>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="activity-attachments">
+        <div class="activity-attachments-head">
+          <small>${attachments.length} attachment${attachments.length === 1 ? "" : "s"}</small>
+        </div>
+
+        <div class="activity-attachment-buttons">
+          ${attachments.map((file, index) => `
+            <button class="activity-file-button view-file"
+              type="button"
+              data-kind="activity"
+              data-title="${escapeAttr(
+                attachments.length === 1
+                  ? (item.title || "Activity")
+                  : `${item.title || "Activity"} — Attachment ${index + 1}`
+              )}"
+              data-file-id="${escapeAttr(file.fileId || "")}"
+              data-file-type="${escapeAttr(file.fileType || "")}">
+              <span class="activity-file-index">${index + 1}</span>
+              <span class="activity-file-copy">
+                <strong>${escapeHtml(file.fileName || `Attachment ${index + 1}`)}</strong>
+                <small>${escapeHtml(formatFileType(file.fileType || ""))}</small>
+              </span>
+              <span class="activity-file-open">OPEN</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
   async function loadActivities() {
     const target = $("#activitiesList");
     renderSkeletons(target, 3);
@@ -777,16 +841,7 @@
             <div class="content-meta">${item.dueDate ? `DUE ${escapeHtml(formatDate(item.dueDate))}` : `TERM ${escapeHtml(String(item.term))}`}</div>
             <h3>${escapeHtml(item.title || "Untitled Activity")}</h3>
             <p>${escapeHtml(item.description || "")}</p>
-            <div class="content-foot">
-              <small>${item.fileName ? escapeHtml(item.fileName) : "Google Drive attachment"}</small>
-              <button class="primary-small view-file"
-                data-kind="activity"
-                data-title="${escapeAttr(item.title || "Activity")}"
-                data-file-id="${escapeAttr(item.fileId || "")}"
-                data-file-type="${escapeAttr(item.fileType || "")}">
-                VIEW ACTIVITY
-              </button>
-            </div>
+            ${activityAttachmentsHtml(item)}
           </div>
         </article>
       `).join("");

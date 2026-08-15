@@ -322,8 +322,31 @@
                   <div id="activitySectionsOptions" class="section-picker-options"></div>
                 </details>
               </div>
-              <label><span>Google Drive File ID or URL</span><input id="activityFileId"></label>
-              <label><span>Optional file upload through Apps Script</span><input id="activityFile" type="file" accept=".pdf,image/*,*/*"></label>
+              <div class="activity-attachments-admin-box">
+                <div class="field-label">Activity Attachments <small>Maximum 5 files</small></div>
+
+                <label>
+                  <span>Google Drive File IDs or URLs <small>(optional — one per line)</small></span>
+                  <textarea
+                    id="activityFileId"
+                    rows="3"
+                    placeholder="Paste up to 5 Google Drive File IDs or URLs&#10;One attachment per line"></textarea>
+                </label>
+
+                <label>
+                  <span>Upload files through Apps Script <small>(optional)</small></span>
+                  <input
+                    id="activityFile"
+                    type="file"
+                    accept=".pdf,image/*,*/*"
+                    multiple>
+                  <small class="field-help">Select up to 5 total attachments. Maximum 8 MB per uploaded file.</small>
+                </label>
+
+                <div id="activityAttachmentSelection" class="activity-attachment-selection">
+                  No files selected.
+                </div>
+              </div>
               <label class="check-row"><input id="activityPublished" type="checkbox" checked> <span>Published</span></label>
               <button class="primary-btn" type="submit">SAVE ACTIVITY</button>
             </form>
