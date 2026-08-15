@@ -6009,3 +6009,646 @@ button {
     font-size: .7rem;
   }
 }
+
+/* ============================================================
+   v15 — Admin Compliance score-card readability fix
+   ============================================================ */
+
+/* Lock the Admin Compliance dialog to a dark readable text color.
+   This prevents any older/admin theme rule from making task text white. */
+.admin-compliance-dialog,
+.admin-compliance-modal-body,
+.admin-score-group,
+.admin-score-task,
+.admin-score-task-main,
+.admin-score-task-data {
+  color: #17191d;
+}
+
+.admin-score-group-head strong {
+  color: #17191d !important;
+  font-size: .84rem;
+  font-weight: 950;
+}
+
+.admin-score-group-head small {
+  color: #70757d !important;
+  font-weight: 750;
+}
+
+.admin-score-task {
+  color: #17191d !important;
+  background: #fff;
+}
+
+.admin-score-task.is-missing {
+  color: #17191d !important;
+  background: #f4f5f6;
+  border-color: #d9dde2;
+}
+
+.admin-score-task-main small {
+  color: #6f747c !important;
+  font-size: .58rem;
+  font-weight: 950;
+  letter-spacing: .02em;
+}
+
+.admin-score-task-main strong {
+  color: #17191d !important;
+  margin-top: 3px;
+  font-size: .76rem;
+  font-weight: 900;
+  line-height: 1.3;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.admin-score-task-data strong {
+  color: #17191d !important;
+  font-size: .88rem;
+  font-weight: 950;
+  line-height: 1.15;
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.admin-score-task-data small {
+  color: #686d75 !important;
+  font-weight: 800;
+  opacity: 1 !important;
+}
+
+.admin-score-task.is-missing .admin-score-task-data strong {
+  color: #17191d !important;
+}
+
+.admin-score-task.is-missing .admin-score-task-data small {
+  color: #686d75 !important;
+}
+
+/* Missing task names/chips must also remain dark on their white background. */
+.admin-missing-task-chips span,
+.missing-overview-task-chip {
+  color: #30343a !important;
+}
+
+@media (max-width: 760px) {
+  .admin-score-task-main strong {
+    font-size: .72rem;
+    line-height: 1.25;
+  }
+
+  .admin-score-task-main small {
+    font-size: .55rem;
+  }
+
+  .admin-score-task-data strong {
+    font-size: .8rem;
+  }
+
+  .admin-score-task-data small {
+    font-size: .56rem;
+  }
+}
+
+
+/* ============================================================
+   v17 — Compact Admin phone roster + score profile
+   ============================================================ */
+
+.student-profile-meta,
+.student-profile-submeta {
+  min-width: 0;
+}
+
+/* Structured student metadata */
+.student-profile-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 5px;
+  color: #686d75;
+  font-size: .66rem;
+  line-height: 1.25;
+}
+
+.student-profile-id {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.student-profile-section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.student-profile-meta-dot {
+  flex: 0 0 auto;
+  color: #a5a9af;
+}
+
+.student-profile-submeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  color: #858a91;
+  font-size: .59rem;
+  font-weight: 700;
+}
+
+.student-state-active {
+  color: #30704b;
+  font-weight: 850;
+}
+
+.student-state-inactive {
+  color: #a61020;
+  font-weight: 850;
+}
+
+/* Strong readability lock for every Admin score row. */
+.student-compliance-dialog .admin-score-task-main strong,
+.student-compliance-dialog .admin-score-task-main small,
+.student-compliance-dialog .admin-score-task-data strong,
+.student-compliance-dialog .admin-score-task-data small {
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+.student-compliance-dialog .admin-score-task-main strong {
+  color: #17191d !important;
+}
+
+.student-compliance-dialog .admin-score-task.is-missing .admin-score-task-main strong {
+  color: #17191d !important;
+}
+
+.student-compliance-dialog .admin-score-task-data strong {
+  color: #17191d !important;
+}
+
+@media (max-width: 760px) {
+  /* --------------------------------------------
+     STUDENT PROFILES
+     -------------------------------------------- */
+
+  .student-profiles-panel {
+    padding: 13px !important;
+  }
+
+  .student-list-head {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+    margin-bottom: 11px;
+  }
+
+  .student-list-head h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.1;
+  }
+
+  .student-list-head p {
+    margin: 5px 0 0;
+    color: #747981;
+    font-size: .65rem;
+    line-height: 1.35;
+  }
+
+  .student-list-controls {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 88px;
+    align-items: stretch;
+    gap: 7px;
+    margin-top: 0 !important;
+  }
+
+  .student-list-controls .compact-select {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: 37px;
+    min-height: 37px;
+    padding: 0 30px 0 10px;
+    border-radius: 9px;
+    font-size: .66rem;
+  }
+
+  #refreshStudentsAdmin {
+    width: 88px;
+    min-width: 88px;
+    height: 37px;
+    min-height: 37px;
+    margin: 0 !important;
+    padding: 0 8px;
+    white-space: nowrap !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+    border-radius: 9px;
+    font-size: .62rem;
+  }
+
+  #adminStudentsList.admin-list {
+    gap: 8px;
+  }
+
+  .student-profile-list-item {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 10px 11px !important;
+    border-radius: 11px;
+  }
+
+  .student-profile-list-copy {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .student-profile-name-btn {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    color: #17191d !important;
+    font-size: clamp(.78rem, 3.65vw, .9rem);
+    font-weight: 950;
+    line-height: 1.12;
+    letter-spacing: -.015em;
+    text-decoration: none !important;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .student-profile-meta {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    gap: 5px;
+    margin-top: 5px;
+    font-size: .61rem;
+    line-height: 1.2;
+  }
+
+  .student-profile-section {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .student-profile-submeta {
+    margin-top: 3px;
+    font-size: .56rem;
+    line-height: 1.15;
+  }
+
+  .student-profile-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .student-profile-actions .mini-btn {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    margin: 0 !important;
+    padding: 0 8px;
+    border-radius: 9px;
+    font-size: .61rem;
+    white-space: nowrap;
+  }
+
+  .student-profile-actions .student-view-compliance {
+    border-color: #202328;
+    background: #202328;
+    color: #fff;
+  }
+
+  /* --------------------------------------------
+     STUDENT COMPLIANCE PROFILE MODAL
+     -------------------------------------------- */
+
+  .student-compliance-dialog {
+    width: calc(100vw - 14px) !important;
+    max-height: calc(100svh - 14px) !important;
+    border-radius: 14px !important;
+  }
+
+  .student-compliance-dialog .admin-compliance-modal-head {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    align-items: center;
+    gap: 2px 8px;
+    padding: 9px 10px 8px !important;
+  }
+
+  /* Let title children occupy the header grid directly:
+     row 1 = small label + term/X
+     row 2 = full-width student name
+     row 3 = full-width ID + section */
+  .student-compliance-dialog .admin-compliance-modal-title {
+    display: contents;
+  }
+
+  .student-compliance-dialog .admin-compliance-modal-title .section-kicker {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    margin: 0 !important;
+    color: #7a7f87;
+    font-size: .47rem !important;
+    font-weight: 950;
+    line-height: 1;
+    letter-spacing: .075em;
+  }
+
+  .student-compliance-dialog .admin-compliance-modal-head-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    gap: 5px;
+  }
+
+  .student-compliance-dialog #studentComplianceModalTitle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+    margin: 3px 0 1px !important;
+    color: #17191d;
+    font-size: clamp(.82rem, 3.8vw, .98rem) !important;
+    font-weight: 950;
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .student-compliance-dialog #studentComplianceModalMeta {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
+    margin: 0;
+    color: #737881;
+    font-size: .56rem !important;
+    font-weight: 720;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .student-compliance-dialog .admin-modal-term-control select {
+    width: 76px;
+    min-width: 76px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 22px 0 8px;
+    border-radius: 8px;
+    font-size: .6rem;
+  }
+
+  .student-compliance-dialog .viewer-close {
+    width: 31px;
+    height: 31px;
+    min-width: 31px;
+    min-height: 31px;
+    font-size: 1rem;
+  }
+
+  .student-compliance-dialog .admin-compliance-modal-body {
+    padding: 8px !important;
+    overflow-x: hidden;
+  }
+
+  /* Compact 2x2 summary */
+  .student-compliance-dialog .admin-student-compliance-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .student-compliance-dialog .admin-student-compliance-summary > div {
+    min-height: 66px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 9px 10px !important;
+    border-radius: 10px;
+  }
+
+  .student-compliance-dialog .admin-student-compliance-summary span {
+    font-size: .5rem;
+    line-height: 1;
+  }
+
+  .student-compliance-dialog .admin-student-compliance-summary strong {
+    margin-top: 5px;
+    font-size: 1.25rem;
+    line-height: .95;
+  }
+
+  /* Missing tasks: one tight block, smaller chips */
+  .student-compliance-dialog .admin-student-missing-block {
+    margin-bottom: 9px;
+    padding: 9px !important;
+    border-radius: 10px;
+  }
+
+  .student-compliance-dialog .admin-student-missing-head > div {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 5px 7px;
+  }
+
+  .student-compliance-dialog .admin-student-missing-head .section-kicker {
+    margin: 0;
+    font-size: .5rem !important;
+    line-height: 1;
+  }
+
+  .student-compliance-dialog .admin-student-missing-head strong {
+    margin: 0;
+    font-size: .64rem;
+    line-height: 1.15;
+  }
+
+  .student-compliance-dialog .admin-missing-task-chips {
+    gap: 5px;
+    margin-top: 7px;
+  }
+
+  .student-compliance-dialog .admin-missing-task-chips span {
+    max-width: 100%;
+    padding: 5px 7px;
+    gap: 4px;
+    border-radius: 8px;
+    color: #30343a !important;
+    font-size: .57rem;
+    line-height: 1.2;
+  }
+
+  .student-compliance-dialog .admin-missing-task-chips b {
+    color: #a61020 !important;
+    font-size: .56rem;
+  }
+
+  /* Dense score groups */
+  .student-compliance-dialog .admin-score-group {
+    margin-top: 9px;
+  }
+
+  .student-compliance-dialog .admin-score-group-head {
+    min-height: 22px;
+    margin-bottom: 5px;
+    align-items: center;
+  }
+
+  .student-compliance-dialog .admin-score-group-head strong {
+    color: #17191d !important;
+    font-size: .72rem !important;
+    line-height: 1.1;
+  }
+
+  .student-compliance-dialog .admin-score-group-head small {
+    color: #777c84 !important;
+    font-size: .54rem !important;
+  }
+
+  .student-compliance-dialog .admin-score-task-list {
+    gap: 5px;
+  }
+
+  .student-compliance-dialog .admin-score-task {
+    min-height: 54px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+    padding: 7px 8px !important;
+    border-left-width: 4px;
+    border-radius: 9px;
+    background: #fff !important;
+  }
+
+  .student-compliance-dialog .admin-score-task.is-missing {
+    background: #f3f4f5 !important;
+  }
+
+  .student-compliance-dialog .admin-score-task-main {
+    min-width: 0;
+  }
+
+  .student-compliance-dialog .admin-score-task-main small {
+    color: #727780 !important;
+    font-size: .5rem !important;
+    font-weight: 950;
+    line-height: 1;
+  }
+
+  .student-compliance-dialog .admin-score-task-main strong {
+    display: block;
+    min-width: 0;
+    margin-top: 3px !important;
+    color: #17191d !important;
+    font-size: .66rem !important;
+    font-weight: 900;
+    line-height: 1.16 !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .student-compliance-dialog .admin-score-task-data {
+    min-width: 70px;
+    align-self: center;
+  }
+
+  .student-compliance-dialog .admin-score-task-data strong {
+    color: #17191d !important;
+    font-size: .73rem !important;
+    font-weight: 950;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+
+  .student-compliance-dialog .admin-score-task-data small {
+    margin-top: 3px;
+    color: #6e737b !important;
+    font-size: .5rem !important;
+    font-weight: 800;
+    line-height: 1.05;
+    white-space: nowrap;
+  }
+
+  .student-compliance-dialog .admin-score-task.is-missing .admin-score-task-main strong,
+  .student-compliance-dialog .admin-score-task.is-missing .admin-score-task-data strong,
+  .student-compliance-dialog .admin-score-task.is-missing .admin-score-task-data small {
+    color: #17191d !important;
+    opacity: 1 !important;
+  }
+
+  .student-compliance-dialog .admin-score-sync-notice {
+    margin-bottom: 8px;
+    padding: 8px 9px;
+    border-radius: 9px;
+    font-size: .58rem;
+    line-height: 1.3;
+  }
+}
+
+@media (max-width: 390px) {
+  .student-profiles-panel {
+    padding: 11px !important;
+  }
+
+  .student-profile-list-item {
+    padding: 9px 10px !important;
+  }
+
+  .student-profile-name-btn {
+    font-size: .78rem;
+  }
+
+  .student-profile-meta {
+    font-size: .57rem;
+  }
+
+  .student-profile-submeta {
+    font-size: .53rem;
+  }
+
+  .student-profile-actions .mini-btn {
+    height: 32px;
+    min-height: 32px;
+    font-size: .57rem;
+  }
+
+  .student-compliance-dialog #studentComplianceModalTitle {
+    font-size: .82rem !important;
+  }
+
+  .student-compliance-dialog .admin-score-task {
+    min-height: 51px;
+    padding: 6px 7px !important;
+  }
+
+  .student-compliance-dialog .admin-score-task-main strong {
+    font-size: .63rem !important;
+  }
+
+  .student-compliance-dialog .admin-score-task-data {
+    min-width: 64px;
+  }
+
+  .student-compliance-dialog .admin-score-task-data strong {
+    font-size: .69rem !important;
+  }
+}

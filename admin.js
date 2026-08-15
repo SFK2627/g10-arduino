@@ -2100,9 +2100,23 @@
           <button class="student-profile-name-btn" type="button" data-student-profile-uid="${s.uid}">
             ${escapeHtml(s.fullName || s.studentId)}
           </button>
-          <small>${escapeHtml(s.studentId || "")} • ${escapeHtml(s.gender || "—")} • ${escapeHtml(s.section || "")} • ${s.active === false ? "Inactive" : "Active"}</small>
+
+          <div class="student-profile-meta">
+            <span class="student-profile-id">${escapeHtml(s.studentId || "")}</span>
+            <span class="student-profile-meta-dot" aria-hidden="true">•</span>
+            <span class="student-profile-section">${escapeHtml(s.section || "")}</span>
+          </div>
+
+          <div class="student-profile-submeta">
+            <span>${escapeHtml(s.gender || "—")}</span>
+            <span aria-hidden="true">•</span>
+            <span class="${s.active === false ? "student-state-inactive" : "student-state-active"}">
+              ${s.active === false ? "Inactive" : "Active"}
+            </span>
+          </div>
         </div>
-        <div class="inline-actions">
+
+        <div class="inline-actions student-profile-actions">
           <button class="mini-btn student-view-compliance" type="button" data-student-profile-uid="${s.uid}">View Scores</button>
           <button class="mini-btn student-toggle" data-uid="${s.uid}" data-active="${s.active === false ? "0" : "1"}">${s.active === false ? "Activate" : "Deactivate"}</button>
         </div>
