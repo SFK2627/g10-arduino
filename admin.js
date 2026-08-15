@@ -2146,14 +2146,33 @@
   }
 
   function adminScoreText(task) {
-    const max = Number(task?.maxScore);
-    const score = Number(task?.score);
-    const hasMax = Number.isFinite(max) && max > 0;
-    const hasScore = Number.isFinite(score);
+    const rawMax = task?.maxScore;
+    const rawScore = task?.score;
 
-    if (!hasMax) return task?.missing === true ? "Missing" : "Completed";
-    if (!hasScore) return `— / ${formatAdminScore(max)}`;
-    return `${formatAdminScore(score)} / ${formatAdminScore(max)}`;
+    const hasMax =
+      rawMax !== null &&
+      rawMax !== undefined &&
+      rawMax !== "" &&
+      Number.isFinite(Number(rawMax)) &&
+      Number(rawMax) > 0;
+
+    const hasScore =
+      rawScore !== null &&
+      rawScore !== undefined &&
+      rawScore !== "" &&
+      Number.isFinite(Number(rawScore));
+
+    if (task?.missing === true) {
+      return hasMax
+        ? `Missing / ${formatAdminScore(rawMax)}`
+        : "Missing";
+    }
+
+    if (!hasMax || !hasScore) {
+      return "Raw score unavailable";
+    }
+
+    return `${formatAdminScore(rawScore)} / ${formatAdminScore(rawMax)}`;
   }
 
   function formatAdminScore(value) {
@@ -2169,40 +2188,94 @@
     return Number.isFinite(percent) ? `${percent}%` : "—";
   }
 
+  function adminSnapshotHasCompleteRawScores(snapshot) {
+    const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
+
+    if (!tasks.length) return false;
+
+    return tasks.every(task => {
+      const rawMax = task?.maxScore;
+
+      const hasMax =
+        rawMax !== null &&
+        rawMax !== undefined &&
+        rawMax !== "" &&
+        Number.isFinite(Number(rawMax)) &&
+        Number(rawMax) > 0;
+
+      if (!hasMax) return false;
+
+      if (task?.missing === true) {
+        return true;
+      }
+
+      const rawScore = task?.score;
+
+      return (
+        rawScore !== null &&
+        rawScore !== undefined &&
+        rawScore !== "" &&
+        Number.isFinite(Number(rawScore))
+      );
+    });
+  }
+
   async function getStudentComplianceSnapshot(student, term, preferAdmin = true) {
     const studentId = G10DataService.normalizeStudentId(student?.studentId);
-    if (!studentId) return { data: null, fullScores: false };
-
-    if (preferAdmin) {
-      try {
-        const adminSnap = await db.collection("adminCompliance")
-          .doc(studentId)
-          .collection("terms")
-          .doc(`term${Number(term)}`)
-          .get();
-
-        if (adminSnap.exists) {
-          return {
-            data: { id: adminSnap.id, ...adminSnap.data() },
-            fullScores: true
-          };
-        }
-      } catch (err) {
-        console.warn("Admin score snapshot read failed:", err);
-      }
+    if (!studentId) {
+      return {
+        data: null,
+        fullScores: false,
+        adminSnapshotMissing: preferAdmin
+      };
     }
 
+    if (preferAdmin) {
+      const adminSnap = await db.collection("adminCompliance")
+        .doc(studentId)
+        .collection("terms")
+        .doc(`term${Number(term)}`)
+        .get();
+
+      if (!adminSnap.exists) {
+        // Important: DO NOT fall back to studentCompliance for View Scores.
+        // That snapshot intentionally hides WW/PT raw scores.
+        return {
+          data: null,
+          fullScores: false,
+          adminSnapshotMissing: true
+        };
+      }
+
+      const data = { id: adminSnap.id, ...adminSnap.data() };
+
+      return {
+        data,
+        fullScores: adminSnapshotHasCompleteRawScores(data),
+        adminSnapshotMissing: false
+      };
+    }
+
+    // Missing-compliance overview only needs missing task names/status,
+    // so the privacy-safe student snapshot is sufficient here.
     const studentSnap = await db.collection("studentCompliance")
       .doc(studentId)
       .collection("terms")
       .doc(`term${Number(term)}`)
       .get();
 
-    if (!studentSnap.exists) return { data: null, fullScores: false };
+    if (!studentSnap.exists) {
+      return {
+        data: null,
+        fullScores: false,
+        adminSnapshotMissing: false
+      };
+    }
 
     return {
       data: { id: studentSnap.id, ...studentSnap.data() },
-      fullScores: false
+      fullScores: false,
+      adminSnapshotMissing: false
     };
   }
 
@@ -2243,7 +2316,13 @@
 
     try {
       const result = await getStudentComplianceSnapshot(student, term, true);
-      renderStudentComplianceProfile(student, term, result.data, result.fullScores);
+      renderStudentComplianceProfile(
+        student,
+        term,
+        result.data,
+        result.fullScores,
+        result.adminSnapshotMissing === true
+      );
     } catch (err) {
       body.innerHTML = `
         <div class="admin-compliance-empty">
@@ -2254,14 +2333,28 @@
     }
   }
 
-  function renderStudentComplianceProfile(student, term, snapshot, fullScores) {
+  function renderStudentComplianceProfile(
+    student,
+    term,
+    snapshot,
+    fullScores,
+    adminSnapshotMissing = false
+  ) {
     const body = $("#studentComplianceModalBody");
 
     if (!snapshot) {
       body.innerHTML = `
         <div class="admin-compliance-empty">
-          <strong>No Compliance snapshot for Term ${term}.</strong>
-          <small>Sync and publish this term from Compliance Sync first.</small>
+          <strong>${
+            adminSnapshotMissing
+              ? "Full raw-score snapshot is not available yet."
+              : `No Compliance snapshot for Term ${term}.`
+          }</strong>
+          <small>
+            Run <strong>Compliance Sync → SYNC CHECKED SECTIONS &amp; PUBLISH</strong>
+            once after deploying the updated Apps Script. This creates the
+            Admin-only WW/PT/TA raw score snapshot.
+          </small>
         </div>
       `;
       return;
@@ -2274,8 +2367,9 @@
       ? ""
       : `
         <div class="admin-score-sync-notice">
-          Full WW/PT raw scores are not available in this older snapshot.
-          Run <strong>SYNC CHECKED SECTIONS &amp; PUBLISH</strong> once to create the new Admin score snapshot.
+          <strong>RAW SCORE SNAPSHOT NEEDS RE-SYNC.</strong>
+          Some WW/PT scores or HPS values are missing from this older Admin snapshot.
+          Run <strong>SYNC CHECKED SECTIONS &amp; PUBLISH</strong> again.
         </div>
       `;
 
@@ -2313,7 +2407,13 @@
 
                   <div class="admin-score-task-data">
                     <strong>${escapeHtml(adminScoreText(task))}</strong>
-                    <small>${missing ? "Missing" : `${escapeHtml(adminPercentText(task))} • Completed`}</small>
+                    <small>${
+                      missing
+                        ? "Missing"
+                        : fullScores
+                          ? `${escapeHtml(adminPercentText(task))} • Completed`
+                          : "Re-sync required"
+                    }</small>
                   </div>
                 </article>
               `;
