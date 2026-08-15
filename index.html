@@ -246,8 +246,18 @@
       </section>
 
       <section id="page-compliance" class="page">
-        <div class="section-toolbar section-toolbar-clean">
-          <button class="refresh-btn" data-refresh="compliance">Refresh</button>
+        <div class="section-toolbar section-toolbar-clean compliance-toolbar">
+          <div class="compliance-toolbar-actions">
+            <button id="openComplianceLegendBtn" class="legend-icon-btn" type="button" aria-label="Open score legend" title="Score Legend">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="3" y="4" width="4" height="4" rx="1"></rect>
+                <rect x="3" y="10" width="4" height="4" rx="1"></rect>
+                <rect x="3" y="16" width="4" height="4" rx="1"></rect>
+                <path d="M10 6h11M10 12h11M10 18h11"></path>
+              </svg>
+            </button>
+            <button class="refresh-btn" data-refresh="compliance">Refresh</button>
+          </div>
         </div>
 
         <article class="compliance-summary">
@@ -273,21 +283,6 @@
         </article>
 
 
-        <section class="compliance-color-guide" aria-label="Compliance color guide">
-          <div class="compliance-color-guide-head">
-            <span class="card-kicker">COLOR GUIDE</span>
-            <strong>Score Legend by Percentage</strong>
-          </div>
-          <div class="compliance-color-guide-items">
-            <div class="color-guide-item guide-black"><span class="color-dot"></span><b>Black</b><small>Missing / No Score</small></div>
-            <div class="color-guide-item guide-red"><span class="color-dot"></span><b>Red</b><small>0–40%</small></div>
-            <div class="color-guide-item guide-orange"><span class="color-dot"></span><b>Orange</b><small>41–74%</small></div>
-            <div class="color-guide-item guide-yellow"><span class="color-dot"></span><b>Yellow</b><small>75–85%</small></div>
-            <div class="color-guide-item guide-lime"><span class="color-dot"></span><b>Lime</b><small>86–90%</small></div>
-            <div class="color-guide-item guide-green"><span class="color-dot"></span><b>Green</b><small>91–100%</small></div>
-          </div>
-        </section>
-
         <section id="missingRequirementsCard" class="missing-card hidden">
           <div class="missing-card-head">
             <div>
@@ -302,7 +297,10 @@
         <div class="all-status-heading">
           <div>
             <span class="card-kicker">ALL TASKS</span>
-            <h3>Task Status</h3>
+            <div class="task-status-title-row">
+              <h3>Task Status</h3>
+              <span id="taskStatusStudentName" class="task-status-student-name">Student</span>
+            </div>
           </div>
         </div>
 
@@ -352,6 +350,47 @@
         <button id="passwordChangeBtn" class="primary-btn" type="submit">SAVE NEW PASSWORD</button>
         <button id="passwordChangeLogoutBtn" class="secondary-btn" type="button">SIGN OUT</button>
       </form>
+    </div>
+  </div>
+
+
+  <div id="complianceLegendModal" class="modal compliance-legend-modal hidden" role="dialog" aria-modal="true" aria-labelledby="complianceLegendTitle">
+    <div class="modal-backdrop compliance-legend-backdrop" data-close-compliance-legend></div>
+    <div class="compliance-legend-dialog">
+      <header class="compliance-legend-head">
+        <div>
+          <span class="card-kicker">SCORE GUIDE</span>
+          <h3 id="complianceLegendTitle">Score Legend by Color and Percentage</h3>
+        </div>
+        <button class="viewer-close compliance-legend-close" type="button" data-close-compliance-legend aria-label="Close score legend">×</button>
+      </header>
+
+      <div class="compliance-legend-list">
+        <div class="compliance-legend-row legend-black">
+          <span class="legend-swatch"></span>
+          <div><strong>Missing / No Score</strong><small>Blank score</small></div>
+        </div>
+        <div class="compliance-legend-row legend-red">
+          <span class="legend-swatch"></span>
+          <div><strong>Very Low</strong><small>0–40%</small></div>
+        </div>
+        <div class="compliance-legend-row legend-orange">
+          <span class="legend-swatch"></span>
+          <div><strong>Below Passing</strong><small>41–74%</small></div>
+        </div>
+        <div class="compliance-legend-row legend-yellow">
+          <span class="legend-swatch"></span>
+          <div><strong>Passing</strong><small>75–85%</small></div>
+        </div>
+        <div class="compliance-legend-row legend-lime">
+          <span class="legend-swatch"></span>
+          <div><strong>Very Good</strong><small>86–90%</small></div>
+        </div>
+        <div class="compliance-legend-row legend-green">
+          <span class="legend-swatch"></span>
+          <div><strong>Excellent</strong><small>91–100%</small></div>
+        </div>
+      </div>
     </div>
   </div>
 

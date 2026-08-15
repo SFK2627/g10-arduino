@@ -95,6 +95,12 @@
       el.addEventListener("click", closeViewer);
     });
 
+    $("#openComplianceLegendBtn").addEventListener("click", openComplianceLegend);
+
+    $$("[data-close-compliance-legend]").forEach(el => {
+      el.addEventListener("click", closeComplianceLegend);
+    });
+
     document.addEventListener("click", async e => {
       const heartButton = e.target.closest(".announcement-heart-btn");
       if (!heartButton) return;
@@ -102,8 +108,33 @@
     });
 
     document.addEventListener("keydown", e => {
-      if (e.key === "Escape" && !$("#viewerModal").classList.contains("hidden")) closeViewer();
+      if (e.key !== "Escape") return;
+
+      if (!$("#complianceLegendModal").classList.contains("hidden")) {
+        closeComplianceLegend();
+        return;
+      }
+
+      if (!$("#viewerModal").classList.contains("hidden")) {
+        closeViewer();
+      }
     });
+  }
+
+  function openComplianceLegend() {
+    $("#complianceLegendModal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+  }
+
+  function closeComplianceLegend() {
+    $("#complianceLegendModal").classList.add("hidden");
+
+    if (
+      $("#viewerModal").classList.contains("hidden") &&
+      $("#passwordChangeModal").classList.contains("hidden")
+    ) {
+      document.body.classList.remove("modal-open");
+    }
   }
 
   async function handleLogin(event) {
@@ -245,6 +276,7 @@
     $("#sideStudentName").textContent = name;
     $("#heroSection").textContent = profile.section || "Grade 10";
     $("#sideSection").textContent = profile.section || "Grade 10";
+    $("#taskStatusStudentName").textContent = name;
 
     const parts = name.split(/\s+/).filter(Boolean);
     $("#avatarInitials").textContent = (parts[0]?.[0] || "S") + (parts[parts.length - 1]?.[0] || "");

@@ -1,4 +1,4 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v12";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v13";
 
 const CORE_ASSETS = [
   "./",
