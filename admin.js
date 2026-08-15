@@ -1413,7 +1413,53 @@
   }
 
   function materialFeedVersion(collectionName) {
-    return collectionName === "activities" ? 3 : 2;
+    // v4 explicitly republishes the full Activity attachments[] array.
+    return collectionName === "activities" ? 4 : 2;
+  }
+
+  function normalizeActivityAttachmentsForFeed(payload) {
+    const rows = Array.isArray(payload?.attachments)
+      ? payload.attachments
+      : [];
+
+    const normalized = [];
+    const seen = new Set();
+
+    rows.forEach(file => {
+      const fileId = String(file?.fileId || "").trim();
+      if (!fileId || seen.has(fileId) || normalized.length >= 5) return;
+
+      seen.add(fileId);
+      normalized.push({
+        fileId,
+        fileName: String(file?.fileName || "Google Drive attachment").trim(),
+        fileType: String(file?.fileType || "").trim(),
+        fileSize:
+          file?.fileSize === null || file?.fileSize === undefined
+            ? null
+            : Number(file.fileSize) || null
+      });
+    });
+
+    // Backward compatibility: if the Activity has only the original legacy
+    // file fields, convert that first file into attachments[] automatically.
+    if (!normalized.length) {
+      const legacyFileId = String(payload?.fileId || "").trim();
+
+      if (legacyFileId) {
+        normalized.push({
+          fileId: legacyFileId,
+          fileName: String(payload?.fileName || "Google Drive attachment").trim(),
+          fileType: String(payload?.fileType || "").trim(),
+          fileSize:
+            payload?.fileSize === null || payload?.fileSize === undefined
+              ? null
+              : Number(payload.fileSize) || null
+        });
+      }
+    }
+
+    return normalized;
   }
 
   function materialFeedTargets(allowedSections) {
@@ -1462,11 +1508,30 @@
     if (!payload || payload.published !== true) return;
 
     const targets = materialFeedTargets(payload.allowedSections);
-    const feedPayload = {
+
+    let feedPayload = {
       ...payload,
       sourceId: documentId,
       feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+
+    if (collectionName === "activities") {
+      const attachments = normalizeActivityAttachmentsForFeed(payload);
+      const firstAttachment = attachments[0] || null;
+
+      // Explicitly write the complete metadata array into every student feed.
+      // This prevents the student feed from falling back to fileId only.
+      feedPayload = {
+        ...feedPayload,
+        attachments,
+        attachmentCount: attachments.length,
+        attachmentSchemaVersion: 3,
+        fileId: firstAttachment?.fileId || "",
+        fileName: firstAttachment?.fileName || "",
+        fileType: firstAttachment?.fileType || "",
+        fileSize: firstAttachment?.fileSize ?? null
+      };
+    }
 
     const writeBatch = db.batch();
     targets.forEach(sectionKey => {
@@ -1580,7 +1645,7 @@
 
       await ref.set({
         feedVersion: materialFeedVersion("activities"),
-        attachmentSchemaVersion: 2,
+        attachmentSchemaVersion: 3,
         feedUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
 

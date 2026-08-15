@@ -758,18 +758,33 @@
   }
 
   function normalizeActivityAttachments(item) {
-    const attachments = Array.isArray(item?.attachments)
+    const rows = Array.isArray(item?.attachments)
       ? item.attachments
-          .filter(file => file && file.fileId)
-          .slice(0, 5)
       : [];
+
+    const attachments = [];
+    const seen = new Set();
+
+    rows.forEach(file => {
+      const fileId = String(file?.fileId || "").trim();
+      if (!fileId || seen.has(fileId) || attachments.length >= 5) return;
+
+      seen.add(fileId);
+      attachments.push({
+        fileId,
+        fileName: String(file?.fileName || `Attachment ${attachments.length + 1}`),
+        fileType: String(file?.fileType || ""),
+        fileSize: file?.fileSize ?? null
+      });
+    });
 
     if (attachments.length) return attachments;
 
     // Backward compatibility for Activities made before multi-file support.
-    if (item?.fileId) {
+    const legacyFileId = String(item?.fileId || "").trim();
+    if (legacyFileId) {
       return [{
-        fileId: item.fileId,
+        fileId: legacyFileId,
         fileName: item.fileName || "Google Drive attachment",
         fileType: item.fileType || "",
         fileSize: item.fileSize ?? null
@@ -793,7 +808,7 @@
     return `
       <div class="activity-attachments">
         <div class="activity-attachments-head">
-          <small>${attachments.length} attachment${attachments.length === 1 ? "" : "s"}</small>
+          <small>${attachments.length} / 5 attachment${attachments.length === 1 ? "" : "s"}</small>
         </div>
 
         <div class="activity-attachment-buttons">
