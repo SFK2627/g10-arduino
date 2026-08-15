@@ -916,9 +916,11 @@
     const value = Number(percent);
 
     if (!Number.isFinite(value)) return "neutral";
-    if (value <= 40) return "red";
-    if (value <= 74) return "orange";
-    if (value <= 85) return "yellow";
+
+    // Universal score bands for WW, PT, and Term Assessment.
+    if (value <= 30) return "red";
+    if (value <= 69) return "orange";
+    if (value <= 84) return "yellow";
     if (value <= 90) return "lime";
     return "green";
   }

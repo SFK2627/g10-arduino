@@ -2430,6 +2430,17 @@
     return Number.isFinite(percent) ? `${percent}%` : "—";
   }
 
+  function adminComplianceBandFromPercent(percent) {
+    const value = Number(percent);
+
+    if (!Number.isFinite(value)) return "neutral";
+    if (value <= 30) return "red";
+    if (value <= 69) return "orange";
+    if (value <= 84) return "yellow";
+    if (value <= 90) return "lime";
+    return "green";
+  }
+
   function adminSnapshotHasCompleteRawScores(snapshot) {
     const tasks = Array.isArray(snapshot?.tasks) ? snapshot.tasks : [];
 
@@ -2638,7 +2649,14 @@
           <div class="admin-score-task-list">
             ${groupTasks.map(task => {
               const missing = task?.missing === true;
-              const band = String(task?.percentageBand || (missing ? "black" : "neutral")).toLowerCase();
+              const scorePercent = Number(task?.scorePercent);
+              const band = missing
+                ? "black"
+                : (
+                    Number.isFinite(scorePercent)
+                      ? adminComplianceBandFromPercent(scorePercent)
+                      : String(task?.percentageBand || "neutral").toLowerCase()
+                  );
 
               return `
                 <article class="admin-score-task band-${escapeHtml(band)} ${missing ? "is-missing" : ""}">
@@ -3606,7 +3624,7 @@
               missing: missingCount,
               total: rawTasks.length
             },
-            colorScale: "hps-0-40-41-74-75-85-86-90-91-100",
+            colorScale: "hps-0-30-31-69-70-84-85-90-91-100",
             publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
             publishedBy: admin.email || admin.uid || "teacher"
           };
@@ -3615,13 +3633,13 @@
             ...commonSnapshot,
             tasks: studentTasks,
             source: "e-class-record",
-            complianceSchemaVersion: 3
+            complianceSchemaVersion: 4
           }, { merge: true });
 
           batch.set(adminRef, {
             ...commonSnapshot,
             tasks: rawTasks,
-            adminComplianceSchemaVersion: 1
+            adminComplianceSchemaVersion: 2
           }, { merge: true });
 
           pendingWrites += 2;
