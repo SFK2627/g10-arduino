@@ -132,11 +132,12 @@
             <small id="statActiveActivitiesNote">Current term</small>
           </article>
 
-          <article class="admin-stat-card warning">
+          <button id="missingComplianceCard" class="admin-stat-card admin-stat-card-button warning" type="button">
             <span class="admin-stat-label">MISSING COMPLIANCE</span>
             <strong id="statMissingCompliance">—</strong>
             <small id="statMissingComplianceNote">Students with missing tasks</small>
-          </article>
+            <span class="admin-stat-open-hint">View students →</span>
+          </button>
 
           <article class="admin-stat-card scheduled">
             <span class="admin-stat-label">SCHEDULED POSTS</span>
@@ -555,6 +556,81 @@
         </div>
       </section>
     </main>
+  </div>
+
+
+  <div id="studentComplianceModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="studentComplianceModalTitle">
+    <div class="modal-backdrop admin-compliance-backdrop" data-close-student-compliance></div>
+    <div class="admin-compliance-dialog student-compliance-dialog">
+      <header class="admin-compliance-modal-head">
+        <div class="admin-compliance-modal-title">
+          <span class="section-kicker">STUDENT COMPLIANCE PROFILE</span>
+          <h3 id="studentComplianceModalTitle">Student</h3>
+          <small id="studentComplianceModalMeta">Student ID • Section</small>
+        </div>
+        <div class="admin-compliance-modal-head-actions">
+          <label class="admin-modal-term-control">
+            <span>Term</span>
+            <select id="studentComplianceTerm">
+              <option value="1">Term 1</option>
+              <option value="2">Term 2</option>
+              <option value="3">Term 3</option>
+            </select>
+          </label>
+          <button class="viewer-close" type="button" data-close-student-compliance aria-label="Close">×</button>
+        </div>
+      </header>
+
+      <div id="studentComplianceModalBody" class="admin-compliance-modal-body">
+        <div class="admin-modal-loading">Loading student scores…</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="missingComplianceModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="missingComplianceModalTitle">
+    <div class="modal-backdrop admin-compliance-backdrop" data-close-missing-compliance></div>
+    <div class="admin-compliance-dialog missing-compliance-dialog">
+      <header class="admin-compliance-modal-head">
+        <div class="admin-compliance-modal-title">
+          <span class="section-kicker">MISSING COMPLIANCE OVERVIEW</span>
+          <h3 id="missingComplianceModalTitle">Students with Missing Tasks</h3>
+          <small id="missingComplianceModalMeta">Current term</small>
+        </div>
+        <button class="viewer-close" type="button" data-close-missing-compliance aria-label="Close">×</button>
+      </header>
+
+      <div class="missing-overview-controls">
+        <label>
+          <span>Term</span>
+          <select id="missingOverviewTerm">
+            <option value="1">Term 1</option>
+            <option value="2">Term 2</option>
+            <option value="3">Term 3</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Section</span>
+          <select id="missingOverviewSection">
+            <option value="*">All Sections</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Sort</span>
+          <select id="missingOverviewSort">
+            <option value="section">Section A–Z</option>
+            <option value="name">Student Name A–Z</option>
+            <option value="missing">Most Missing First</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="missingComplianceOverviewSummary" class="missing-overview-summary"></div>
+      <div id="missingComplianceOverviewList" class="missing-overview-list">
+        <div class="admin-modal-loading">Loading missing compliance…</div>
+      </div>
+    </div>
   </div>
 
   <div id="adminHeartsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminHeartsTitle">

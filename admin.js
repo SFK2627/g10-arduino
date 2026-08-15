@@ -19,6 +19,9 @@
   let adminNotificationUnsubscribe = null;
   let currentUnreadNotifications = [];
 
+  let activeStudentComplianceProfile = null;
+  let missingComplianceOverviewRows = [];
+
   document.addEventListener("DOMContentLoaded", boot);
 
   async function boot() {
@@ -66,6 +69,33 @@
     $("#cancelAnnouncementEditBtn").addEventListener("click", resetAnnouncementForm);
     $("#refreshAnnouncementsAdmin").addEventListener("click", loadAdminAnnouncements);
     $("#refreshAdminDashboard").addEventListener("click", loadAdminDashboardStats);
+    $("#missingComplianceCard").addEventListener("click", openMissingComplianceOverview);
+    $("#studentComplianceTerm").addEventListener("change", loadActiveStudentComplianceProfile);
+    $("#missingOverviewTerm").addEventListener("change", loadMissingComplianceOverview);
+    $("#missingOverviewSection").addEventListener("change", renderMissingComplianceOverview);
+    $("#missingOverviewSort").addEventListener("change", renderMissingComplianceOverview);
+
+    $$("[data-close-student-compliance]").forEach(el => {
+      el.addEventListener("click", closeStudentComplianceProfile);
+    });
+
+    $$("[data-close-missing-compliance]").forEach(el => {
+      el.addEventListener("click", closeMissingComplianceOverview);
+    });
+
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Escape") return;
+
+      if (!$("#studentComplianceModal").classList.contains("hidden")) {
+        closeStudentComplianceProfile();
+        return;
+      }
+
+      if (!$("#missingComplianceModal").classList.contains("hidden")) {
+        closeMissingComplianceOverview();
+      }
+    });
+
     $("#adminNotificationBtn").addEventListener("click", toggleAdminNotificationPanel);
     $("#markNotificationsReadBtn").addEventListener("click", markAllAdminNotificationsRead);
     $$("[data-close-hearts]").forEach(el => {
@@ -2065,15 +2095,24 @@
       : cachedStudentProfiles.filter(student => normalizeSectionName(student.section) === selectedSection);
 
     target.innerHTML = rows.length ? rows.map(s => `
-      <div class="admin-list-item">
-        <div>
-          <strong>${escapeHtml(s.fullName || s.studentId)}</strong>
+      <div class="admin-list-item student-profile-list-item">
+        <div class="student-profile-list-copy">
+          <button class="student-profile-name-btn" type="button" data-student-profile-uid="${s.uid}">
+            ${escapeHtml(s.fullName || s.studentId)}
+          </button>
           <small>${escapeHtml(s.studentId || "")} • ${escapeHtml(s.gender || "—")} • ${escapeHtml(s.section || "")} • ${s.active === false ? "Inactive" : "Active"}</small>
         </div>
         <div class="inline-actions">
+          <button class="mini-btn student-view-compliance" type="button" data-student-profile-uid="${s.uid}">View Scores</button>
           <button class="mini-btn student-toggle" data-uid="${s.uid}" data-active="${s.active === false ? "0" : "1"}">${s.active === false ? "Activate" : "Deactivate"}</button>
         </div>
       </div>`).join("") : "No students found for this section.";
+
+    $$("[data-student-profile-uid]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        openStudentComplianceProfile(btn.dataset.studentProfileUid);
+      });
+    });
 
     $$(".student-toggle").forEach(btn => {
       btn.addEventListener("click", async () => {
@@ -2084,6 +2123,439 @@
         await loadStudents();
       });
     });
+  }
+
+
+
+  function currentAdminTerm() {
+    return Number($("#settingCurrentTerm")?.value || 1);
+  }
+
+  function adminTaskCategoryLabel(task) {
+    const category = String(task?.category || "").toLowerCase();
+    if (category === "ww") return "Written Works";
+    if (category === "pt") return "Performance Tasks";
+    if (category === "ta") return "Term Assessment";
+    return task?.categoryLabel || "Task";
+  }
+
+  function adminTaskCode(task) {
+    const category = String(task?.category || "").toUpperCase();
+    const number = Number(task?.taskNumber || 0);
+    return `${category || "TASK"}${number || ""}`;
+  }
+
+  function adminScoreText(task) {
+    const max = Number(task?.maxScore);
+    const score = Number(task?.score);
+    const hasMax = Number.isFinite(max) && max > 0;
+    const hasScore = Number.isFinite(score);
+
+    if (!hasMax) return task?.missing === true ? "Missing" : "Completed";
+    if (!hasScore) return `— / ${formatAdminScore(max)}`;
+    return `${formatAdminScore(score)} / ${formatAdminScore(max)}`;
+  }
+
+  function formatAdminScore(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "—";
+    return Number.isInteger(number)
+      ? String(number)
+      : String(Math.round(number * 100) / 100);
+  }
+
+  function adminPercentText(task) {
+    const percent = Number(task?.scorePercent);
+    return Number.isFinite(percent) ? `${percent}%` : "—";
+  }
+
+  async function getStudentComplianceSnapshot(student, term, preferAdmin = true) {
+    const studentId = G10DataService.normalizeStudentId(student?.studentId);
+    if (!studentId) return { data: null, fullScores: false };
+
+    if (preferAdmin) {
+      try {
+        const adminSnap = await db.collection("adminCompliance")
+          .doc(studentId)
+          .collection("terms")
+          .doc(`term${Number(term)}`)
+          .get();
+
+        if (adminSnap.exists) {
+          return {
+            data: { id: adminSnap.id, ...adminSnap.data() },
+            fullScores: true
+          };
+        }
+      } catch (err) {
+        console.warn("Admin score snapshot read failed:", err);
+      }
+    }
+
+    const studentSnap = await db.collection("studentCompliance")
+      .doc(studentId)
+      .collection("terms")
+      .doc(`term${Number(term)}`)
+      .get();
+
+    if (!studentSnap.exists) return { data: null, fullScores: false };
+
+    return {
+      data: { id: studentSnap.id, ...studentSnap.data() },
+      fullScores: false
+    };
+  }
+
+  async function openStudentComplianceProfile(uid, requestedTerm = null) {
+    let student = cachedStudentProfiles.find(item => item.uid === uid);
+
+    if (!student) {
+      const snap = await db.collection("students").doc(uid).get();
+      if (!snap.exists) return;
+      student = { uid: snap.id, ...snap.data() };
+    }
+
+    activeStudentComplianceProfile = student;
+
+    const term = Number(requestedTerm || currentAdminTerm());
+    $("#studentComplianceTerm").value = String(term);
+    $("#studentComplianceModalTitle").textContent =
+      student.fullName || student.studentId || "Student";
+
+    $("#studentComplianceModalMeta").textContent = [
+      student.studentId || "",
+      student.section || ""
+    ].filter(Boolean).join(" • ");
+
+    $("#studentComplianceModal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+
+    await loadActiveStudentComplianceProfile();
+  }
+
+  async function loadActiveStudentComplianceProfile() {
+    const student = activeStudentComplianceProfile;
+    if (!student) return;
+
+    const term = Number($("#studentComplianceTerm").value || currentAdminTerm());
+    const body = $("#studentComplianceModalBody");
+    body.innerHTML = '<div class="admin-modal-loading">Loading student scores…</div>';
+
+    try {
+      const result = await getStudentComplianceSnapshot(student, term, true);
+      renderStudentComplianceProfile(student, term, result.data, result.fullScores);
+    } catch (err) {
+      body.innerHTML = `
+        <div class="admin-compliance-empty">
+          <strong>Could not load this student's Compliance.</strong>
+          <small>${escapeHtml(err.message || "Unknown error")}</small>
+        </div>
+      `;
+    }
+  }
+
+  function renderStudentComplianceProfile(student, term, snapshot, fullScores) {
+    const body = $("#studentComplianceModalBody");
+
+    if (!snapshot) {
+      body.innerHTML = `
+        <div class="admin-compliance-empty">
+          <strong>No Compliance snapshot for Term ${term}.</strong>
+          <small>Sync and publish this term from Compliance Sync first.</small>
+        </div>
+      `;
+      return;
+    }
+
+    const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+    const missingTasks = tasks.filter(task => task?.missing === true);
+
+    const scoreNotice = fullScores
+      ? ""
+      : `
+        <div class="admin-score-sync-notice">
+          Full WW/PT raw scores are not available in this older snapshot.
+          Run <strong>SYNC CHECKED SECTIONS &amp; PUBLISH</strong> once to create the new Admin score snapshot.
+        </div>
+      `;
+
+    const groups = [
+      ["ww", "Written Works"],
+      ["pt", "Performance Tasks"],
+      ["ta", "Term Assessment"]
+    ];
+
+    const taskGroupsHtml = groups.map(([key, label]) => {
+      const groupTasks = tasks.filter(task =>
+        String(task?.category || "").toLowerCase() === key
+      );
+
+      if (!groupTasks.length) return "";
+
+      return `
+        <section class="admin-score-group">
+          <div class="admin-score-group-head">
+            <strong>${label}</strong>
+            <small>${groupTasks.length} task${groupTasks.length === 1 ? "" : "s"}</small>
+          </div>
+
+          <div class="admin-score-task-list">
+            ${groupTasks.map(task => {
+              const missing = task?.missing === true;
+              const band = String(task?.percentageBand || (missing ? "black" : "neutral")).toLowerCase();
+
+              return `
+                <article class="admin-score-task band-${escapeHtml(band)} ${missing ? "is-missing" : ""}">
+                  <div class="admin-score-task-main">
+                    <small>${escapeHtml(adminTaskCode(task))}</small>
+                    <strong>${escapeHtml(task.displayName || task.taskName || "Task")}</strong>
+                  </div>
+
+                  <div class="admin-score-task-data">
+                    <strong>${escapeHtml(adminScoreText(task))}</strong>
+                    <small>${missing ? "Missing" : `${escapeHtml(adminPercentText(task))} • Completed`}</small>
+                  </div>
+                </article>
+              `;
+            }).join("")}
+          </div>
+        </section>
+      `;
+    }).join("");
+
+    body.innerHTML = `
+      <div class="admin-student-compliance-summary">
+        <div>
+          <span>Total Tasks</span>
+          <strong>${escapeHtml(String(snapshot.summary?.total ?? tasks.length))}</strong>
+        </div>
+        <div>
+          <span>Completed</span>
+          <strong>${escapeHtml(String(snapshot.summary?.complete ?? Math.max(0, tasks.length - missingTasks.length)))}</strong>
+        </div>
+        <div class="missing">
+          <span>Missing</span>
+          <strong>${escapeHtml(String(snapshot.summary?.missing ?? missingTasks.length))}</strong>
+        </div>
+        <div>
+          <span>Term</span>
+          <strong>${escapeHtml(String(term))}</strong>
+        </div>
+      </div>
+
+      ${scoreNotice}
+
+      <section class="admin-student-missing-block ${missingTasks.length ? "" : "complete"}">
+        <div class="admin-student-missing-head">
+          <div>
+            <span class="section-kicker">MISSING TASKS</span>
+            <strong>${missingTasks.length ? `${missingTasks.length} task${missingTasks.length === 1 ? "" : "s"} missing` : "No missing tasks"}</strong>
+          </div>
+        </div>
+
+        ${missingTasks.length
+          ? `<div class="admin-missing-task-chips">
+              ${missingTasks.map(task => `
+                <span>
+                  <b>${escapeHtml(adminTaskCode(task))}</b>
+                  ${escapeHtml(task.displayName || task.taskName || "Task")}
+                </span>
+              `).join("")}
+            </div>`
+          : '<p class="admin-complete-message">All active tasks have recorded scores.</p>'
+        }
+      </section>
+
+      ${taskGroupsHtml || '<div class="admin-compliance-empty">No active tasks in this term.</div>'}
+    `;
+  }
+
+  function closeStudentComplianceProfile() {
+    $("#studentComplianceModal").classList.add("hidden");
+    activeStudentComplianceProfile = null;
+
+    if ($("#missingComplianceModal").classList.contains("hidden")) {
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  async function openMissingComplianceOverview() {
+    const term = currentAdminTerm();
+    $("#missingOverviewTerm").value = String(term);
+    populateMissingOverviewSections();
+
+    $("#missingComplianceModal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+
+    await loadMissingComplianceOverview();
+  }
+
+  function populateMissingOverviewSections() {
+    const select = $("#missingOverviewSection");
+    const current = select.value || "*";
+
+    select.innerHTML = [
+      '<option value="*">All Sections</option>',
+      ...knownSections.map(section =>
+        `<option value="${escapeHtml(section)}">${escapeHtml(section)}</option>`
+      )
+    ].join("");
+
+    if (current === "*" || knownSections.includes(current)) {
+      select.value = current;
+    }
+  }
+
+  async function loadMissingComplianceOverview() {
+    const list = $("#missingComplianceOverviewList");
+    const term = Number($("#missingOverviewTerm").value || currentAdminTerm());
+
+    list.innerHTML = '<div class="admin-modal-loading">Loading missing compliance…</div>';
+    $("#missingComplianceModalMeta").textContent = `Term ${term}`;
+
+    try {
+      if (!cachedStudentProfiles.length) {
+        const snap = await db.collection("students").get();
+        cachedStudentProfiles = snap.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+      }
+
+      const activeStudents = cachedStudentProfiles
+        .filter(student => student.active !== false);
+
+      const rows = [];
+
+      for (let i = 0; i < activeStudents.length; i += 25) {
+        const chunk = activeStudents.slice(i, i + 25);
+
+        const results = await Promise.all(
+          chunk.map(async student => {
+            try {
+              const result = await getStudentComplianceSnapshot(student, term, false);
+              const snapshot = result.data;
+              if (!snapshot) return null;
+
+              const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+              const missingTasks = tasks.filter(task => task?.missing === true);
+
+              if (!missingTasks.length) return null;
+
+              return {
+                uid: student.uid,
+                studentId: student.studentId || snapshot.studentId || "",
+                fullName: student.fullName || snapshot.fullName || student.studentId || "Student",
+                section: normalizeSectionName(student.section || snapshot.section),
+                missingTasks,
+                missingCount: missingTasks.length
+              };
+            } catch (err) {
+              console.warn("Could not inspect Compliance for:", student.studentId, err);
+              return null;
+            }
+          })
+        );
+
+        rows.push(...results.filter(Boolean));
+      }
+
+      missingComplianceOverviewRows = rows;
+      populateMissingOverviewSections();
+      renderMissingComplianceOverview();
+    } catch (err) {
+      list.innerHTML = `
+        <div class="admin-compliance-empty">
+          <strong>Could not load the missing Compliance overview.</strong>
+          <small>${escapeHtml(err.message || "Unknown error")}</small>
+        </div>
+      `;
+    }
+  }
+
+  function renderMissingComplianceOverview() {
+    const list = $("#missingComplianceOverviewList");
+    const summary = $("#missingComplianceOverviewSummary");
+    if (!list || !summary) return;
+
+    const section = $("#missingOverviewSection").value || "*";
+    const sort = $("#missingOverviewSort").value || "section";
+
+    let rows = missingComplianceOverviewRows.slice();
+
+    if (section !== "*") {
+      rows = rows.filter(row => row.section === section);
+    }
+
+    rows.sort((a, b) => {
+      if (sort === "name") {
+        return String(a.fullName).localeCompare(String(b.fullName), undefined, { sensitivity: "base" });
+      }
+
+      if (sort === "missing") {
+        const diff = Number(b.missingCount) - Number(a.missingCount);
+        if (diff !== 0) return diff;
+        return String(a.fullName).localeCompare(String(b.fullName), undefined, { sensitivity: "base" });
+      }
+
+      const sectionDiff = String(a.section).localeCompare(String(b.section), undefined, { sensitivity: "base" });
+      if (sectionDiff !== 0) return sectionDiff;
+
+      return String(a.fullName).localeCompare(String(b.fullName), undefined, { sensitivity: "base" });
+    });
+
+    const totalMissingTasks = rows.reduce((sum, row) => sum + row.missingCount, 0);
+
+    summary.innerHTML = `
+      <div><span>Students</span><strong>${rows.length}</strong></div>
+      <div><span>Missing Tasks</span><strong>${totalMissingTasks}</strong></div>
+      <div><span>Section</span><strong>${escapeHtml(section === "*" ? "ALL" : section)}</strong></div>
+    `;
+
+    list.innerHTML = rows.length
+      ? rows.map(row => `
+          <article class="missing-overview-student">
+            <div class="missing-overview-student-head">
+              <div>
+                <button class="missing-student-name-btn" type="button" data-missing-student-uid="${row.uid}">
+                  ${escapeHtml(row.fullName)}
+                </button>
+                <small>${escapeHtml(row.studentId)} • ${escapeHtml(row.section)}</small>
+              </div>
+              <span class="missing-overview-count">${row.missingCount} missing</span>
+            </div>
+
+            <div class="missing-overview-task-list">
+              ${row.missingTasks.map(task => `
+                <span class="missing-overview-task-chip">
+                  <b>${escapeHtml(adminTaskCode(task))}</b>
+                  ${escapeHtml(task.displayName || task.taskName || "Task")}
+                </span>
+              `).join("")}
+            </div>
+          </article>
+        `).join("")
+      : `
+        <div class="admin-compliance-empty success">
+          <strong>No missing tasks found.</strong>
+          <small>No student in this filter currently has a missing task for this term.</small>
+        </div>
+      `;
+
+    $$("[data-missing-student-uid]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        openStudentComplianceProfile(
+          btn.dataset.missingStudentUid,
+          Number($("#missingOverviewTerm").value || currentAdminTerm())
+        );
+      });
+    });
+  }
+
+  function closeMissingComplianceOverview() {
+    $("#missingComplianceModal").classList.add("hidden");
+    missingComplianceOverviewRows = [];
+
+    if ($("#studentComplianceModal").classList.contains("hidden")) {
+      document.body.classList.remove("modal-open");
+    }
   }
 
 
@@ -2713,7 +3185,7 @@
         throw new Error("No student records are ready to publish from the checked sections.");
       }
 
-      const batchLimit = 400;
+      const batchLimit = 380;
       let batch = db.batch();
       let pendingWrites = 0;
       let published = 0;
@@ -2745,16 +3217,40 @@
 
           const studentUid = String(matchingStudent?.uid || "").trim();
 
-          const tasks = Array.isArray(row.tasks) ? row.tasks : [];
-          const missingCount = tasks.filter(task => task && task.missing === true).length;
-          const completeCount = Math.max(0, tasks.length - missingCount);
+          const rawTasks = Array.isArray(row.tasks) ? row.tasks : [];
+          const missingCount = rawTasks.filter(task => task && task.missing === true).length;
+          const completeCount = Math.max(0, rawTasks.length - missingCount);
 
-          const ref = db.collection("studentCompliance")
+          // Student-facing snapshot keeps the existing privacy rule:
+          // WW/PT raw score and HPS are removed. Term Assessment may show score.
+          const studentTasks = rawTasks.map(task => {
+            const clean = { ...task };
+            const category = String(clean.category || "").toLowerCase();
+            const taskId = String(clean.taskId || "").toLowerCase();
+            const isTermAssessment =
+              category === "ta" ||
+              taskId.indexOf("ta") === 0;
+
+            if (!isTermAssessment) {
+              delete clean.score;
+              delete clean.maxScore;
+              delete clean.showScore;
+            }
+
+            return clean;
+          });
+
+          const studentRef = db.collection("studentCompliance")
             .doc(normalizedStudentId)
             .collection("terms")
             .doc(`term${Number(payload.term)}`);
 
-          batch.set(ref, {
+          const adminRef = db.collection("adminCompliance")
+            .doc(normalizedStudentId)
+            .collection("terms")
+            .doc(`term${Number(payload.term)}`);
+
+          const commonSnapshot = {
             studentId: normalizedStudentId,
             studentIdOriginal: rawStudentId,
             studentAuthEmail,
@@ -2766,17 +3262,27 @@
             summary: {
               complete: completeCount,
               missing: missingCount,
-              total: tasks.length
+              total: rawTasks.length
             },
-            tasks,
-            source: "e-class-record",
-            complianceSchemaVersion: 2,
             colorScale: "hps-0-40-41-74-75-85-86-90-91-100",
             publishedAt: firebase.firestore.FieldValue.serverTimestamp(),
             publishedBy: admin.email || admin.uid || "teacher"
+          };
+
+          batch.set(studentRef, {
+            ...commonSnapshot,
+            tasks: studentTasks,
+            source: "e-class-record",
+            complianceSchemaVersion: 3
           }, { merge: true });
 
-          pendingWrites++;
+          batch.set(adminRef, {
+            ...commonSnapshot,
+            tasks: rawTasks,
+            adminComplianceSchemaVersion: 1
+          }, { merge: true });
+
+          pendingWrites += 2;
           published++;
 
           if (pendingWrites >= batchLimit) {
