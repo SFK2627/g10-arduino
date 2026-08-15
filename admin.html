@@ -413,10 +413,18 @@
                 <p>This list is admin-only. Students never download the entire roster.</p>
               </div>
               <div class="student-list-controls">
+                <label class="student-search-control">
+                  <span class="sr-only">Search student</span>
+                  <input
+                    id="studentSearchInput"
+                    type="search"
+                    autocomplete="off"
+                    placeholder="Search name or Student ID">
+                </label>
                 <select id="studentSectionFilter" class="compact-select">
                   <option value="*">All Sections</option>
                 </select>
-                <button id="refreshStudentsAdmin" class="mini-btn">Refresh</button>
+                <button id="refreshStudentsAdmin" class="mini-btn" type="button">Refresh</button>
               </div>
             </div>
             <div id="adminStudentsList" class="admin-list"></div>
@@ -558,6 +566,36 @@
     </main>
   </div>
 
+
+
+  <div id="studentPasswordResetModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="studentPasswordResetTitle">
+    <div class="modal-backdrop admin-compliance-backdrop" data-close-student-password-reset></div>
+    <div class="student-password-reset-dialog">
+      <header class="student-password-reset-head">
+        <div>
+          <span class="section-kicker">PASSWORD RESET</span>
+          <h3 id="studentPasswordResetTitle">Temporary Password</h3>
+          <small id="studentPasswordResetMeta">Student</small>
+        </div>
+        <button class="viewer-close" type="button" data-close-student-password-reset aria-label="Close">×</button>
+      </header>
+
+      <div class="student-password-reset-body">
+        <p>Give this temporary password directly to the student. It is shown here for this reset only.</p>
+
+        <div class="temporary-password-box">
+          <code id="studentTemporaryPassword">—</code>
+          <button id="copyStudentTemporaryPassword" class="mini-btn" type="button">Copy</button>
+        </div>
+
+        <div class="password-reset-note">
+          The student will be required to create a new password after the next login.
+        </div>
+
+        <button class="primary-btn student-password-reset-done" type="button" data-close-student-password-reset>DONE</button>
+      </div>
+    </div>
+  </div>
 
   <div id="studentComplianceModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="studentComplianceModalTitle">
     <div class="modal-backdrop admin-compliance-backdrop" data-close-student-compliance></div>

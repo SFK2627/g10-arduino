@@ -86,6 +86,11 @@
     document.addEventListener("keydown", e => {
       if (e.key !== "Escape") return;
 
+      if (!$("#studentPasswordResetModal").classList.contains("hidden")) {
+        closeStudentPasswordResetModal();
+        return;
+      }
+
       if (!$("#studentComplianceModal").classList.contains("hidden")) {
         closeStudentComplianceProfile();
         return;
@@ -106,6 +111,13 @@
     $("#bulkImportBtn").addEventListener("click", importBulkStudents);
     $("#newStudentSection").addEventListener("change", handleNewStudentSectionChange);
     $("#studentSectionFilter").addEventListener("change", renderStudentProfiles);
+    $("#studentSearchInput").addEventListener("input", renderStudentProfiles);
+
+    $$("[data-close-student-password-reset]").forEach(el => {
+      el.addEventListener("click", closeStudentPasswordResetModal);
+    });
+    $("#copyStudentTemporaryPassword").addEventListener("click", copyStudentTemporaryPassword);
+
     $("#saveComplianceSettingsBtn").addEventListener("click", saveComplianceSettingsToFirebase);
     $("#syncTerm").addEventListener("change", handleComplianceTermChange);
     $("#complianceSelectAllBtn").addEventListener("click", () => setAllComplianceSectionsChecked(true));
@@ -2090,9 +2102,30 @@
     if (!target) return;
 
     const selectedSection = $("#studentSectionFilter")?.value || "*";
-    const rows = selectedSection === "*"
-      ? cachedStudentProfiles
-      : cachedStudentProfiles.filter(student => normalizeSectionName(student.section) === selectedSection);
+    const searchQuery = String($("#studentSearchInput")?.value || "")
+      .trim()
+      .toLowerCase();
+
+    let rows = selectedSection === "*"
+      ? cachedStudentProfiles.slice()
+      : cachedStudentProfiles.filter(
+          student =>
+            normalizeSectionName(student.section) === selectedSection
+        );
+
+    if (searchQuery) {
+      rows = rows.filter(student => {
+        const searchable = [
+          student.fullName,
+          student.studentId,
+          student.section
+        ]
+          .map(value => String(value || "").toLowerCase())
+          .join(" ");
+
+        return searchable.includes(searchQuery);
+      });
+    }
 
     target.innerHTML = rows.length ? rows.map(s => `
       <div class="admin-list-item student-profile-list-item">
@@ -2118,13 +2151,37 @@
 
         <div class="inline-actions student-profile-actions">
           <button class="mini-btn student-view-compliance" type="button" data-student-profile-uid="${s.uid}">View Scores</button>
+          <button
+            class="mini-btn student-reset-password"
+            type="button"
+            data-student-reset-uid="${s.uid}">
+            Reset Pass
+          </button>
           <button class="mini-btn student-toggle" data-uid="${s.uid}" data-active="${s.active === false ? "0" : "1"}">${s.active === false ? "Activate" : "Deactivate"}</button>
+          <button
+            class="mini-btn student-delete"
+            type="button"
+            data-student-delete-uid="${s.uid}">
+            Delete
+          </button>
         </div>
       </div>`).join("") : "No students found for this section.";
 
     $$("[data-student-profile-uid]").forEach(btn => {
       btn.addEventListener("click", () => {
         openStudentComplianceProfile(btn.dataset.studentProfileUid);
+      });
+    });
+
+    $$("[data-student-reset-uid]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        resetStudentPasswordFromProfile(btn.dataset.studentResetUid, btn);
+      });
+    });
+
+    $$("[data-student-delete-uid]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        deleteStudentFromProfile(btn.dataset.studentDeleteUid, btn);
       });
     });
 
@@ -2139,6 +2196,177 @@
     });
   }
 
+
+
+
+  function getCachedStudentByUid(uid) {
+    return cachedStudentProfiles.find(student => student.uid === uid) || null;
+  }
+
+  async function resetStudentPasswordFromProfile(uid, button) {
+    const student = getCachedStudentByUid(uid);
+    if (!student) {
+      alert("Student profile is no longer available. Refresh the list and try again.");
+      return;
+    }
+
+    const confirmed = confirm(
+      `Reset the password of ${student.fullName || student.studentId}?\n\n` +
+      `A new temporary password will be generated. The student must change it after the next login.`
+    );
+
+    if (!confirmed) return;
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Resetting…";
+
+    try {
+      const result = await callAppsScriptSecure({
+        action: "resetStudentPassword",
+        uid: student.uid,
+        studentId: student.studentId
+      });
+
+      if (!result?.temporaryPassword) {
+        throw new Error("The temporary password was not returned.");
+      }
+
+      await db.collection("students").doc(student.uid).set({
+        mustChangePassword: true,
+        passwordResetAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      $("#studentPasswordResetMeta").textContent = [
+        student.fullName || student.studentId,
+        student.studentId
+      ].filter(Boolean).join(" • ");
+
+      $("#studentTemporaryPassword").textContent = result.temporaryPassword;
+      $("#copyStudentTemporaryPassword").textContent = "Copy";
+
+      $("#studentPasswordResetModal").classList.remove("hidden");
+      document.body.classList.add("modal-open");
+    } catch (err) {
+      alert(err.message || "Password reset failed.");
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+
+  function closeStudentPasswordResetModal() {
+    $("#studentPasswordResetModal").classList.add("hidden");
+    $("#studentTemporaryPassword").textContent = "—";
+
+    if (
+      $("#studentComplianceModal").classList.contains("hidden") &&
+      $("#missingComplianceModal").classList.contains("hidden")
+    ) {
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  async function copyStudentTemporaryPassword() {
+    const value = $("#studentTemporaryPassword").textContent.trim();
+    if (!value || value === "—") return;
+
+    const button = $("#copyStudentTemporaryPassword");
+
+    try {
+      await navigator.clipboard.writeText(value);
+      button.textContent = "Copied";
+    } catch (_) {
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+
+      try {
+        document.execCommand("copy");
+        button.textContent = "Copied";
+      } finally {
+        textarea.remove();
+      }
+    }
+
+    setTimeout(() => {
+      if (button) button.textContent = "Copy";
+    }, 1500);
+  }
+
+  async function deleteStudentFromProfile(uid, button) {
+    const student = getCachedStudentByUid(uid);
+    if (!student) {
+      alert("Student profile is no longer available. Refresh the list and try again.");
+      return;
+    }
+
+    const studentName = student.fullName || student.studentId;
+    const studentId = String(student.studentId || "").trim();
+
+    const confirmed = confirm(
+      `DELETE STUDENT?\n\n` +
+      `${studentName}\n${studentId}\n\n` +
+      `This removes the student's Firebase login and current Student Profile.\n\n` +
+      `Compliance/score history is intentionally KEPT using Student ID ${studentId}. ` +
+      `If you add the same Student ID again, the next Compliance Sync can match the same Sheet record.\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    const secondConfirmed = confirm(
+      `Final confirmation: permanently delete the login/profile for ${studentName}?`
+    );
+
+    if (!secondConfirmed) return;
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Deleting…";
+
+    try {
+      await callAppsScriptSecure({
+        action: "deleteStudentAccount",
+        uid: student.uid,
+        studentId
+      });
+
+      // Delete only the current roster/profile document.
+      // DO NOT delete studentCompliance/adminCompliance because those are
+      // keyed by Student ID and are needed for safe re-add/re-sync continuity.
+      await db.collection("students").doc(student.uid).delete();
+
+      cachedStudentProfiles = cachedStudentProfiles.filter(
+        item => item.uid !== student.uid
+      );
+
+      renderStudentProfiles();
+      await loadSectionDirectory(true);
+
+      alert(
+        `${studentName} was deleted.\n\n` +
+        `Academic/Compliance history for Student ID ${studentId} was preserved.`
+      );
+    } catch (err) {
+      alert(
+        (err.message || "Student deletion failed.") +
+        "\n\nNo Compliance/score history was deleted."
+      );
+
+      // Refresh because Firebase Auth may have completed even if a later
+      // profile cleanup step failed.
+      await loadStudents().catch(() => {});
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
 
 
   function currentAdminTerm() {
