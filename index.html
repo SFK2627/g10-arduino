@@ -321,6 +321,51 @@
   </div>
 
 
+
+  <div id="studentLoginReminderModal" class="modal login-reminder-modal hidden" role="dialog" aria-modal="true" aria-labelledby="studentLoginReminderTitle">
+    <div class="modal-backdrop login-reminder-backdrop"></div>
+
+    <div id="studentLoginReminderDialog" class="login-reminder-dialog">
+      <header class="login-reminder-head">
+        <div class="login-reminder-heading-copy">
+          <span class="login-reminder-kicker">TERM REMINDER</span>
+          <h2 id="studentLoginReminderTitle">Requirements Reminder</h2>
+          <small id="studentLoginReminderMeta">Student • Term</small>
+        </div>
+
+        <button id="closeStudentLoginReminderBtn" class="login-reminder-close" type="button" aria-label="Close reminder">×</button>
+      </header>
+
+      <div class="login-reminder-body">
+        <div class="login-reminder-hero">
+          <div id="studentLoginReminderIcon" class="login-reminder-icon" aria-hidden="true">!</div>
+          <div>
+            <strong id="studentLoginReminderStatusTitle">Checking your requirements…</strong>
+            <p id="studentLoginReminderMessage">Please wait while your current requirement status is loaded.</p>
+          </div>
+        </div>
+
+        <section id="studentLoginReminderMissingSection" class="login-reminder-missing-section hidden">
+          <div class="login-reminder-list-head">
+            <span>MISSING REQUIREMENTS</span>
+            <strong id="studentLoginReminderMissingCount">0</strong>
+          </div>
+          <div id="studentLoginReminderList" class="login-reminder-list"></div>
+        </section>
+
+        <button id="studentLoginReminderPlayMusicBtn" class="login-reminder-music-btn hidden" type="button">
+          ▶ Play Music
+        </button>
+
+        <button id="studentLoginReminderContinueBtn" class="primary-btn login-reminder-continue" type="button">
+          CONTINUE TO PORTAL
+        </button>
+
+        <audio id="studentLoginReminderAudio" preload="none" loop></audio>
+      </div>
+    </div>
+  </div>
+
   <div id="passwordChangeModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="passwordChangeTitle">
     <div class="modal-backdrop"></div>
     <div class="password-change-dialog">

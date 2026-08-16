@@ -14,6 +14,14 @@
   const announcementReadState = new Map();
   let currentAnnouncementRows = [];
 
+  let loginReminderRequested = false;
+
+  const DEFAULT_LOGIN_REMINDER_POSITIVE =
+    "Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.";
+
+  const DEFAULT_LOGIN_REMINDER_WARNING =
+    "The {term} is nearing its end. Please complete the following missing requirements as soon as possible to avoid delays in your subject completion.";
+
   document.addEventListener("DOMContentLoaded", boot);
 
   async function boot() {
@@ -38,6 +46,12 @@
 
         if (restored?.role === "student" && restored.profile) {
           profile = restored.profile;
+
+          // Firebase keeps the student session active after refresh/reload.
+          // Show the reminder again on every portal load while the student
+          // is still authenticated.
+          loginReminderRequested = true;
+
           await enterApp();
         }
       } catch (err) {
@@ -54,6 +68,10 @@
     $("#mobileLogoutBtn").addEventListener("click", logout);
     $("#passwordChangeForm").addEventListener("submit", handlePasswordChange);
     $("#passwordChangeLogoutBtn").addEventListener("click", logoutFromPasswordChange);
+
+    $("#closeStudentLoginReminderBtn").addEventListener("click", closeStudentLoginReminder);
+    $("#studentLoginReminderContinueBtn").addEventListener("click", closeStudentLoginReminder);
+    $("#studentLoginReminderPlayMusicBtn").addEventListener("click", playStudentLoginReminderMusic);
 
     $("#dashboardAnnouncementAttachment").addEventListener("click", () => {
       const button = $("#dashboardAnnouncementAttachment");
@@ -110,6 +128,11 @@
     document.addEventListener("keydown", e => {
       if (e.key !== "Escape") return;
 
+      if (!$("#studentLoginReminderModal").classList.contains("hidden")) {
+        closeStudentLoginReminder();
+        return;
+      }
+
       if (!$("#complianceLegendModal").classList.contains("hidden")) {
         closeComplianceLegend();
         return;
@@ -155,6 +178,7 @@
       }
 
       profile = account.profile;
+      loginReminderRequested = true;
       await enterApp();
     } catch (err) {
       setError(cleanAuthError(err));
@@ -167,6 +191,7 @@
     $("#studentId").value = $("#studentId").value || "2026-10001";
     $("#password").value = $("#password").value || "123456";
     profile = await G10DataService.signInStudent($("#studentId").value, $("#password").value);
+    loginReminderRequested = true;
     await enterApp();
   }
 
@@ -191,6 +216,234 @@
       refreshDashboardAnnouncement(true)
     ]);
     navigate("dashboard");
+
+    if (loginReminderRequested) {
+      // Triggered by an explicit login or by a restored authenticated
+      // student session after refresh/page reload.
+      loginReminderRequested = false;
+      await maybeShowStudentLoginReminder();
+    }
+  }
+
+
+
+  function termDisplayName(term) {
+    const value = Number(term);
+    if (value === 1) return "First Term";
+    if (value === 2) return "Second Term";
+    if (value === 3) return "Third Term";
+    return `Term ${value || 1}`;
+  }
+
+  function reminderMessageTemplate(value, fallback) {
+    return String(value || fallback || "")
+      .replace(/\{term\}/gi, termDisplayName(currentTerm))
+      .replace(/\{name\}/gi, profile?.fullName || profile?.studentId || "Student");
+  }
+
+  function studentReminderSettings() {
+    return {
+      enabled: settings?.loginReminderEnabled !== false,
+      musicEnabled: settings?.loginReminderMusicEnabled === true,
+      musicUrl: String(settings?.loginReminderMusicUrl || "").trim(),
+      positiveMessage: reminderMessageTemplate(
+        settings?.loginReminderPositiveMessage,
+        DEFAULT_LOGIN_REMINDER_POSITIVE
+      ),
+      warningMessage: reminderMessageTemplate(
+        settings?.loginReminderWarningMessage,
+        DEFAULT_LOGIN_REMINDER_WARNING
+      )
+    };
+  }
+
+  async function maybeShowStudentLoginReminder() {
+    const reminder = studentReminderSettings();
+    if (!reminder.enabled || !profile?.studentId) return;
+
+    let record = null;
+    let loadError = null;
+
+    try {
+      record = await G10DataService.getCompliance(
+        profile.studentId,
+        currentTerm,
+        true
+      );
+    } catch (err) {
+      loadError = err;
+      console.warn("Could not load Login Reminder compliance:", err);
+    }
+
+    const tasks = Array.isArray(record?.tasks) ? record.tasks : [];
+    const missingTasks = tasks.filter(isMissingTask);
+
+    renderStudentLoginReminder({
+      missingTasks,
+      reminder,
+      loadError
+    });
+
+    $("#studentLoginReminderModal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+
+    if (reminder.musicEnabled && reminder.musicUrl) {
+      await startLoginReminderAudio(
+        $("#studentLoginReminderAudio"),
+        $("#studentLoginReminderPlayMusicBtn"),
+        reminder.musicUrl
+      );
+    } else {
+      stopLoginReminderAudio(
+        $("#studentLoginReminderAudio"),
+        $("#studentLoginReminderPlayMusicBtn")
+      );
+    }
+  }
+
+  function renderStudentLoginReminder({ missingTasks, reminder, loadError }) {
+    const dialog = $("#studentLoginReminderDialog");
+    const title = $("#studentLoginReminderTitle");
+    const meta = $("#studentLoginReminderMeta");
+    const icon = $("#studentLoginReminderIcon");
+    const statusTitle = $("#studentLoginReminderStatusTitle");
+    const message = $("#studentLoginReminderMessage");
+    const missingSection = $("#studentLoginReminderMissingSection");
+    const missingCount = $("#studentLoginReminderMissingCount");
+    const list = $("#studentLoginReminderList");
+
+    dialog.classList.remove("is-positive", "is-warning", "is-neutral");
+
+    const studentName = profile?.fullName || profile?.studentId || "Student";
+    meta.textContent = `${studentName} • ${termDisplayName(currentTerm)}`;
+
+    if (loadError) {
+      dialog.classList.add("is-neutral");
+      icon.textContent = "i";
+      title.textContent = "Requirements Reminder";
+      statusTitle.textContent = "Your current status could not be loaded.";
+      message.textContent =
+        "You can continue to the portal and open Compliance to check your latest requirement status.";
+      missingSection.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+
+    if (!missingTasks.length) {
+      dialog.classList.add("is-positive");
+      icon.textContent = "✓";
+      title.textContent = "Great Work!";
+      statusTitle.textContent = "You have no lacking requirements.";
+      message.textContent = reminder.positiveMessage;
+      missingSection.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+
+    dialog.classList.add("is-warning");
+    icon.textContent = "!";
+    title.textContent = "Action Needed";
+    statusTitle.textContent =
+      `${missingTasks.length} missing requirement${missingTasks.length === 1 ? "" : "s"}`;
+    message.textContent = reminder.warningMessage;
+
+    missingCount.textContent = String(missingTasks.length);
+    missingSection.classList.remove("hidden");
+
+    list.innerHTML = missingTasks.map((task, index) => {
+      const category = String(
+        task?.categoryLabel ||
+        task?.category ||
+        task?.taskId ||
+        "Requirement"
+      ).trim();
+
+      return `
+        <article class="login-reminder-list-item">
+          <span class="login-reminder-list-no">${index + 1}</span>
+          <div>
+            <small>${escapeHtml(category)}</small>
+            <strong>${escapeHtml(task?.displayName || task?.taskName || "Requirement")}</strong>
+          </div>
+          <span class="login-reminder-missing-pill">Missing</span>
+        </article>
+      `;
+    }).join("");
+  }
+
+  async function startLoginReminderAudio(audio, playButton, url) {
+    stopLoginReminderAudio(audio, playButton);
+
+    if (!audio || !playButton || !url) return;
+
+    audio.src = url;
+    audio.loop = true;
+    audio.volume = 0.45;
+
+    try {
+      await audio.play();
+      playButton.classList.add("hidden");
+    } catch (_) {
+      playButton.classList.remove("hidden");
+      playButton.textContent = "▶ Play Music";
+    }
+  }
+
+  async function playStudentLoginReminderMusic() {
+    const reminder = studentReminderSettings();
+    const audio = $("#studentLoginReminderAudio");
+    const button = $("#studentLoginReminderPlayMusicBtn");
+
+    if (!reminder.musicEnabled || !reminder.musicUrl) {
+      button.classList.add("hidden");
+      return;
+    }
+
+    if (!audio.src) {
+      audio.src = reminder.musicUrl;
+      audio.loop = true;
+      audio.volume = 0.45;
+    }
+
+    try {
+      await audio.play();
+      button.classList.add("hidden");
+    } catch (_) {
+      button.classList.remove("hidden");
+      button.textContent = "Music unavailable";
+    }
+  }
+
+  function stopLoginReminderAudio(audio, playButton) {
+    if (audio) {
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch (_) {}
+      audio.removeAttribute("src");
+      audio.load();
+    }
+
+    if (playButton) {
+      playButton.classList.add("hidden");
+      playButton.textContent = "▶ Play Music";
+    }
+  }
+
+  function closeStudentLoginReminder() {
+    $("#studentLoginReminderModal").classList.add("hidden");
+    stopLoginReminderAudio(
+      $("#studentLoginReminderAudio"),
+      $("#studentLoginReminderPlayMusicBtn")
+    );
+
+    if (
+      $("#passwordChangeModal").classList.contains("hidden") &&
+      $("#complianceLegendModal").classList.contains("hidden") &&
+      $("#viewerModal").classList.contains("hidden")
+    ) {
+      document.body.classList.remove("modal-open");
+    }
   }
 
 
@@ -1093,6 +1346,12 @@
   }
 
   async function logout() {
+    loginReminderRequested = false;
+
+    if (!$("#studentLoginReminderModal").classList.contains("hidden")) {
+      closeStudentLoginReminder();
+    }
+
     hidePasswordChangeModal();
     await G10DataService.logout();
     profile = null;

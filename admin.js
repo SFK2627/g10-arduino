@@ -22,6 +22,12 @@
   let activeStudentComplianceProfile = null;
   let missingComplianceOverviewRows = [];
 
+  const DEFAULT_LOGIN_REMINDER_POSITIVE =
+    "Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.";
+
+  const DEFAULT_LOGIN_REMINDER_WARNING =
+    "The {term} is nearing its end. Please complete the following missing requirements as soon as possible to avoid delays in your subject completion.";
+
   document.addEventListener("DOMContentLoaded", boot);
 
   async function boot() {
@@ -63,6 +69,14 @@
     });
 
     $("#settingsForm").addEventListener("submit", saveSettings);
+    $("#settingLoginReminderMusicEnabled").addEventListener("change", updateLoginReminderAdminControls);
+    $("#previewLoginReminderBtn").addEventListener("click", previewLoginReminderModal);
+    $("#adminLoginReminderPreviewPlayMusicBtn").addEventListener("click", playAdminReminderPreviewMusic);
+
+    $$("[data-close-admin-login-reminder-preview]").forEach(el => {
+      el.addEventListener("click", closeAdminLoginReminderPreview);
+    });
+
     $("#lessonForm").addEventListener("submit", saveLesson);
     $("#activityForm").addEventListener("submit", saveActivity);
     $("#activityFile").addEventListener("change", renderActivityAttachmentSelection);
@@ -87,6 +101,11 @@
 
     document.addEventListener("keydown", e => {
       if (e.key !== "Escape") return;
+
+      if (!$("#adminLoginReminderPreviewModal").classList.contains("hidden")) {
+        closeAdminLoginReminderPreview();
+        return;
+      }
 
       if (!$("#studentPasswordResetModal").classList.contains("hidden")) {
         closeStudentPasswordResetModal();
@@ -169,6 +188,10 @@
   }
 
   async function adminLogout() {
+    if (!$("#adminLoginReminderPreviewModal").classList.contains("hidden")) {
+      closeAdminLoginReminderPreview();
+    }
+
     if (adminNotificationUnsubscribe) {
       adminNotificationUnsubscribe();
       adminNotificationUnsubscribe = null;
@@ -348,8 +371,28 @@
   async function loadSettings() {
     const snap = await db.collection("settings").doc("main").get();
     const data = snap.exists ? snap.data() : {};
-    $("#settingSchoolYear").value = data.schoolYear || G10_CONFIG.app.schoolYear || "2026-2027";
+
+    $("#settingSchoolYear").value =
+      data.schoolYear || G10_CONFIG.app.schoolYear || "2026-2027";
+
     $("#settingCurrentTerm").value = String(data.currentTerm || 1);
+
+    $("#settingLoginReminderEnabled").checked =
+      data.loginReminderEnabled !== false;
+
+    $("#settingLoginReminderMusicEnabled").checked =
+      data.loginReminderMusicEnabled === true;
+
+    $("#settingLoginReminderMusicUrl").value =
+      String(data.loginReminderMusicUrl || "");
+
+    $("#settingLoginReminderPositiveMessage").value =
+      String(data.loginReminderPositiveMessage || DEFAULT_LOGIN_REMINDER_POSITIVE);
+
+    $("#settingLoginReminderWarningMessage").value =
+      String(data.loginReminderWarningMessage || DEFAULT_LOGIN_REMINDER_WARNING);
+
+    updateLoginReminderAdminControls();
   }
 
   async function saveSettings(e) {
@@ -360,6 +403,17 @@
       const data = {
         schoolYear: $("#settingSchoolYear").value.trim(),
         currentTerm: Number($("#settingCurrentTerm").value),
+
+        loginReminderEnabled: $("#settingLoginReminderEnabled").checked,
+        loginReminderMusicEnabled: $("#settingLoginReminderMusicEnabled").checked,
+        loginReminderMusicUrl: $("#settingLoginReminderMusicUrl").value.trim(),
+        loginReminderPositiveMessage:
+          $("#settingLoginReminderPositiveMessage").value.trim() ||
+          DEFAULT_LOGIN_REMINDER_POSITIVE,
+        loginReminderWarningMessage:
+          $("#settingLoginReminderWarningMessage").value.trim() ||
+          DEFAULT_LOGIN_REMINDER_WARNING,
+
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       await db.collection("settings").doc("main").set(data, { merge: true });
@@ -369,6 +423,180 @@
       setStatus("#settingsStatus", err.message, false);
     }
   }
+
+
+  function updateLoginReminderAdminControls() {
+    const musicEnabled = $("#settingLoginReminderMusicEnabled").checked;
+    $("#settingLoginReminderMusicUrl").disabled = !musicEnabled;
+  }
+
+  function adminReminderTermName() {
+    const term = Number($("#settingCurrentTerm").value || 1);
+    if (term === 1) return "First Term";
+    if (term === 2) return "Second Term";
+    if (term === 3) return "Third Term";
+    return `Term ${term}`;
+  }
+
+  function adminReminderTemplate(value, fallback) {
+    return String(value || fallback || "")
+      .replace(/\{term\}/gi, adminReminderTermName())
+      .replace(/\{name\}/gi, "Student Preview");
+  }
+
+  async function previewLoginReminderModal() {
+    const mode = $("#settingLoginReminderPreviewMode").value || "missing";
+    const isMissing = mode === "missing";
+
+    const dialog = $("#adminLoginReminderPreviewDialog");
+    const title = $("#adminLoginReminderPreviewTitle");
+    const meta = $("#adminLoginReminderPreviewMeta");
+    const icon = $("#adminLoginReminderPreviewIcon");
+    const statusTitle = $("#adminLoginReminderPreviewStatusTitle");
+    const message = $("#adminLoginReminderPreviewMessage");
+    const missingSection = $("#adminLoginReminderPreviewMissingSection");
+    const count = $("#adminLoginReminderPreviewMissingCount");
+    const list = $("#adminLoginReminderPreviewList");
+
+    dialog.classList.remove("is-positive", "is-warning", "is-neutral");
+    meta.textContent = `Student Preview • ${adminReminderTermName()}`;
+
+    if (isMissing) {
+      const sampleTasks = [
+        ["Written Works", "Seatwork #1"],
+        ["Performance Task", "Mini PETA #1"],
+        ["Performance Task", "Activity #2"]
+      ];
+
+      dialog.classList.add("is-warning");
+      icon.textContent = "!";
+      title.textContent = "Action Needed";
+      statusTitle.textContent = `${sampleTasks.length} missing requirements`;
+      message.textContent = adminReminderTemplate(
+        $("#settingLoginReminderWarningMessage").value,
+        DEFAULT_LOGIN_REMINDER_WARNING
+      );
+
+      count.textContent = String(sampleTasks.length);
+      missingSection.classList.remove("hidden");
+      list.innerHTML = sampleTasks.map((task, index) => `
+        <article class="login-reminder-list-item">
+          <span class="login-reminder-list-no">${index + 1}</span>
+          <div>
+            <small>${escapeHtml(task[0])}</small>
+            <strong>${escapeHtml(task[1])}</strong>
+          </div>
+          <span class="login-reminder-missing-pill">Missing</span>
+        </article>
+      `).join("");
+    } else {
+      dialog.classList.add("is-positive");
+      icon.textContent = "✓";
+      title.textContent = "Great Work!";
+      statusTitle.textContent = "You have no lacking requirements.";
+      message.textContent = adminReminderTemplate(
+        $("#settingLoginReminderPositiveMessage").value,
+        DEFAULT_LOGIN_REMINDER_POSITIVE
+      );
+      missingSection.classList.add("hidden");
+      list.innerHTML = "";
+    }
+
+    $("#adminLoginReminderPreviewModal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+
+    const musicEnabled = $("#settingLoginReminderMusicEnabled").checked;
+    const musicUrl = $("#settingLoginReminderMusicUrl").value.trim();
+
+    if (musicEnabled && musicUrl) {
+      await startAdminReminderPreviewAudio(musicUrl);
+    } else {
+      stopAdminReminderPreviewAudio();
+    }
+  }
+
+  async function startAdminReminderPreviewAudio(url) {
+    const audio = $("#adminLoginReminderPreviewAudio");
+    const button = $("#adminLoginReminderPreviewPlayMusicBtn");
+
+    stopAdminReminderPreviewAudio();
+
+    audio.src = url;
+    audio.loop = true;
+    audio.volume = 0.45;
+
+    try {
+      await audio.play();
+      button.classList.add("hidden");
+    } catch (_) {
+      button.classList.remove("hidden");
+      button.textContent = "▶ Play Music";
+    }
+  }
+
+  async function playAdminReminderPreviewMusic() {
+    const audio = $("#adminLoginReminderPreviewAudio");
+    const button = $("#adminLoginReminderPreviewPlayMusicBtn");
+    const musicUrl = $("#settingLoginReminderMusicUrl").value.trim();
+
+    if (!musicUrl) {
+      button.classList.add("hidden");
+      return;
+    }
+
+    if (!audio.src) {
+      audio.src = musicUrl;
+      audio.loop = true;
+      audio.volume = 0.45;
+    }
+
+    try {
+      await audio.play();
+      button.classList.add("hidden");
+    } catch (_) {
+      button.classList.remove("hidden");
+      button.textContent = "Music unavailable";
+    }
+  }
+
+  function stopAdminReminderPreviewAudio() {
+    const audio = $("#adminLoginReminderPreviewAudio");
+    const button = $("#adminLoginReminderPreviewPlayMusicBtn");
+
+    if (audio) {
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch (_) {}
+      audio.removeAttribute("src");
+      audio.load();
+    }
+
+    if (button) {
+      button.classList.add("hidden");
+      button.textContent = "▶ Play Music";
+    }
+  }
+
+  function closeAdminLoginReminderPreview() {
+    $("#adminLoginReminderPreviewModal").classList.add("hidden");
+    stopAdminReminderPreviewAudio();
+
+    const otherOpen = [
+      "#studentPasswordResetModal",
+      "#studentComplianceModal",
+      "#missingComplianceModal",
+      "#adminHeartsModal"
+    ].some(selector => {
+      const el = $(selector);
+      return el && !el.classList.contains("hidden");
+    });
+
+    if (!otherOpen) {
+      document.body.classList.remove("modal-open");
+    }
+  }
+
 
   function parseSections(text) {
     const items = String(text || "")

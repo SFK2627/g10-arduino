@@ -164,6 +164,54 @@
                 <option value="3">Term 3</option>
               </select>
             </label>
+
+            <section class="admin-login-reminder-settings">
+              <div class="admin-login-reminder-settings-head">
+                <span class="section-kicker">STUDENT LOGIN REMINDER</span>
+                <strong>Lacking Requirements Modal</strong>
+                <small>Appears after every successful student login when enabled.</small>
+              </div>
+
+              <label class="check-row reminder-setting-check">
+                <input id="settingLoginReminderEnabled" type="checkbox" checked>
+                <span>Enable Login Reminder Modal</span>
+              </label>
+
+              <label class="check-row reminder-setting-check">
+                <input id="settingLoginReminderMusicEnabled" type="checkbox">
+                <span>Enable Background Music</span>
+              </label>
+
+              <label>
+                <span>Music URL <small>Direct audio/JukeHost link</small></span>
+                <input id="settingLoginReminderMusicUrl" type="url" placeholder="https://...">
+              </label>
+
+              <label>
+                <span>Positive Message <small>No lacking requirements</small></span>
+                <textarea id="settingLoginReminderPositiveMessage" rows="4">Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.</textarea>
+              </label>
+
+              <label>
+                <span>Warning Message <small>Use {term} for First Term / Second Term / Third Term</small></span>
+                <textarea id="settingLoginReminderWarningMessage" rows="5">The {term} is nearing its end. Please complete the following missing requirements as soon as possible to avoid delays in your subject completion.</textarea>
+              </label>
+
+              <div class="admin-reminder-preview-controls">
+                <label>
+                  <span>Preview State</span>
+                  <select id="settingLoginReminderPreviewMode">
+                    <option value="missing">Student with Missing Requirements</option>
+                    <option value="complete">Student with No Lacking Requirements</option>
+                  </select>
+                </label>
+
+                <button id="previewLoginReminderBtn" class="secondary-btn" type="button">
+                  PREVIEW MODAL
+                </button>
+              </div>
+            </section>
+
             <div class="admin-info-note">
               Class announcements are managed from the <strong>Announcements</strong> tab.
             </div>
@@ -590,6 +638,51 @@
   </div>
 
 
+
+
+  <div id="adminLoginReminderPreviewModal" class="modal login-reminder-modal hidden" role="dialog" aria-modal="true" aria-labelledby="adminLoginReminderPreviewTitle">
+    <div class="modal-backdrop login-reminder-backdrop"></div>
+
+    <div id="adminLoginReminderPreviewDialog" class="login-reminder-dialog">
+      <header class="login-reminder-head">
+        <div class="login-reminder-heading-copy">
+          <span class="login-reminder-kicker">ADMIN PREVIEW</span>
+          <h2 id="adminLoginReminderPreviewTitle">Requirements Reminder</h2>
+          <small id="adminLoginReminderPreviewMeta">Student Preview • Term</small>
+        </div>
+
+        <button class="login-reminder-close" type="button" data-close-admin-login-reminder-preview aria-label="Close preview">×</button>
+      </header>
+
+      <div class="login-reminder-body">
+        <div class="login-reminder-hero">
+          <div id="adminLoginReminderPreviewIcon" class="login-reminder-icon" aria-hidden="true">!</div>
+          <div>
+            <strong id="adminLoginReminderPreviewStatusTitle">Preview</strong>
+            <p id="adminLoginReminderPreviewMessage">Preview message.</p>
+          </div>
+        </div>
+
+        <section id="adminLoginReminderPreviewMissingSection" class="login-reminder-missing-section hidden">
+          <div class="login-reminder-list-head">
+            <span>MISSING REQUIREMENTS</span>
+            <strong id="adminLoginReminderPreviewMissingCount">0</strong>
+          </div>
+          <div id="adminLoginReminderPreviewList" class="login-reminder-list"></div>
+        </section>
+
+        <button id="adminLoginReminderPreviewPlayMusicBtn" class="login-reminder-music-btn hidden" type="button">
+          ▶ Play Music
+        </button>
+
+        <button class="primary-btn login-reminder-continue" type="button" data-close-admin-login-reminder-preview>
+          CLOSE PREVIEW
+        </button>
+
+        <audio id="adminLoginReminderPreviewAudio" preload="none" loop></audio>
+      </div>
+    </div>
+  </div>
 
   <div id="studentPasswordResetModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="studentPasswordResetTitle">
     <div class="modal-backdrop admin-compliance-backdrop" data-close-student-password-reset></div>
