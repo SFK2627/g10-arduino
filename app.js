@@ -96,7 +96,10 @@
       loaded.compliance = false;
       $("#currentTermText").textContent = `Term ${currentTerm}`;
       $("#complianceTerm").textContent = `Term ${currentTerm}`;
-      await refreshDashboardMaterialCards(true);
+      await Promise.all([
+        refreshDashboardMaterialCards(true),
+        refreshDashboardRunningGrade(true)
+      ]);
       await loadCurrentPage();
     });
 
@@ -213,7 +216,8 @@
 
     await Promise.all([
       refreshDashboardMaterialCards(true),
-      refreshDashboardAnnouncement(true)
+      refreshDashboardAnnouncement(true),
+      refreshDashboardRunningGrade(false)
     ]);
     navigate("dashboard");
 
@@ -281,6 +285,7 @@
     renderStudentLoginReminder({
       missingTasks,
       reminder,
+      record,
       loadError
     });
 
@@ -301,7 +306,7 @@
     }
   }
 
-  function renderStudentLoginReminder({ missingTasks, reminder, loadError }) {
+  function renderStudentLoginReminder({ missingTasks, reminder, record, loadError }) {
     const dialog = $("#studentLoginReminderDialog");
     const title = $("#studentLoginReminderTitle");
     const meta = $("#studentLoginReminderMeta");
@@ -316,6 +321,9 @@
 
     const studentName = profile?.fullName || profile?.studentId || "Student";
     meta.textContent = `${studentName} • ${termDisplayName(currentTerm)}`;
+    $("#studentReminderGradeTerm").textContent = `TERM ${currentTerm}`;
+    showStudentGrade(record, "studentReminderGrade", loadError);
+    if (!loadError) showStudentGrade(record, "dashboardGrade");
 
     if (loadError) {
       dialog.classList.add("is-neutral");
@@ -324,6 +332,17 @@
       statusTitle.textContent = "Your current status could not be loaded.";
       message.textContent =
         "You can continue to the portal and open Compliance to check your latest requirement status.";
+      missingSection.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+
+    if (!Array.isArray(record?.tasks) || !record.tasks.length) {
+      dialog.classList.add("is-neutral");
+      icon.textContent = "i";
+      title.textContent = "Academic Update";
+      statusTitle.textContent = "No requirements published for this term yet.";
+      message.textContent = "Your term grade will appear above once the teacher publishes the class record.";
       missingSection.classList.add("hidden");
       list.innerHTML = "";
       return;
@@ -1120,6 +1139,55 @@
     }
   }
 
+  /** Display the grade published by the teacher, never recompute it in-browser. */
+  function studentGradeView(record) {
+    const status = String(record?.gradeStatus || "").trim().toUpperCase();
+    const type = String(record?.gradeType || "").trim().toLowerCase();
+    const value = record?.termGrade;
+
+    if (status === "INC") {
+      return { label: "TERM GRADE • INCOMPLETE", value: "INC",
+        note: "Recorded as INC in your E-Class Record. Check your missing requirements." };
+    }
+    if (type === "incomplete") {
+      return { label: "TERM GRADE • STATUS", value: status || "—",
+        note: "Your teacher has recorded this status in the E-Class Record." };
+    }
+    if (value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))) {
+      const number = Number(value);
+      const text = String(Math.round(number * 100) / 100);
+      return type === "provisional"
+        ? { label: "PROVISIONAL RUNNING GRADE", value: text,
+            note: "Computed/transmuted grade (AV). Not yet a recorded term grade." }
+        : { label: "RECORDED TERM GRADE", value: text,
+            note: "Recorded term grade (AW), based on the published E-Class Record." };
+    }
+    return { label: "RUNNING TERM GRADE", value: "—",
+      note: "Not yet available. Your teacher needs to publish an updated class record." };
+  }
+
+  function showStudentGrade(record, prefix, loadError = null) {
+    const grade = loadError
+      ? { label: "RUNNING TERM GRADE", value: "—", note: "Unable to load right now. Please refresh." }
+      : studentGradeView(record);
+    $(`#${prefix}Label`).textContent = grade.label;
+    $(`#${prefix}Value`).textContent = grade.value;
+    $(`#${prefix}Note`).textContent = grade.note;
+  }
+
+  async function refreshDashboardRunningGrade(force = false) {
+    const termAtRequest = currentTerm;
+    $("#dashboardGradeTerm").textContent = `TERM ${termAtRequest}`;
+    $("#dashboardGradeValue").textContent = "…";
+    try {
+      const record = await G10DataService.getCompliance(profile.studentId, termAtRequest, force);
+      if (termAtRequest === currentTerm) showStudentGrade(record, "dashboardGrade");
+    } catch (error) {
+      console.warn("Could not load running grade:", error);
+      if (termAtRequest === currentTerm) showStudentGrade(null, "dashboardGrade", error);
+    }
+  }
+
   async function loadCompliance() {
     const target = $("#complianceList");
     target.innerHTML = `<div class="loading-line">Loading compliance status…</div>`;
@@ -1127,6 +1195,9 @@
     try {
       const record = await G10DataService.getCompliance(profile.studentId, currentTerm, true);
       loaded.compliance = true;
+      showStudentGrade(record, "complianceGrade");
+      showStudentGrade(record, "dashboardGrade");
+      $("#dashboardGradeTerm").textContent = `TERM ${currentTerm}`;
       $("#complianceTerm").textContent = `Term ${currentTerm}`;
       $("#complianceUpdated").textContent = record.lastUpdated
         ? formatDateTime(record.lastUpdated)
@@ -1184,20 +1255,24 @@
 
         // scorePercent is the source of truth for completed-task colors.
         // percentageBand remains only as a backward-compatible fallback.
-        const band = missing
-          ? "black"
-          : (
-              Number.isFinite(percent)
-                ? complianceBandFromPercent(percent)
-                : String(task.percentageBand || "neutral").toLowerCase()
-            );
-
-        const status = missing ? "Missing" : "Completed";
-
         const taskId = String(task?.taskId || "").toLowerCase();
         const category = String(task?.category || "").toLowerCase();
         const categoryLabel = String(task?.categoryLabel || "").toLowerCase();
+        const isWrittenWork = category === "ww" || /^ww\d+$/.test(taskId);
 
+        // Never use WW score percentages or color bands, including on old
+        // snapshots published before the privacy-safe schema was added.
+        const band = isWrittenWork
+          ? (missing ? "black" : "neutral")
+          : missing
+            ? "black"
+            : (Number.isFinite(percent)
+                ? complianceBandFromPercent(percent)
+                : String(task.percentageBand || "neutral").toLowerCase());
+
+        const status = missing ? "Missing" : "Completed";
+
+        const isPerformanceTask = category === "pt" || /^pt\d+$/.test(taskId);
         const isTermAssessment =
           category === "ta" ||
           taskId.startsWith("ta") ||
@@ -1206,13 +1281,13 @@
         const numericScore = Number(task?.score);
         const numericMaxScore = Number(task?.maxScore);
 
-        const hasScore =
-          Number.isFinite(numericScore) &&
-          Number.isFinite(numericMaxScore) &&
-          numericMaxScore > 0;
+        const hasMax = task?.maxScore !== null && task?.maxScore !== undefined &&
+          task?.maxScore !== "" && Number.isFinite(numericMaxScore) && numericMaxScore > 0;
+        const hasScore = !missing && task?.score !== null && task?.score !== undefined &&
+          task?.score !== "" && Number.isFinite(numericScore);
 
-        const score = isTermAssessment && hasScore
-          ? `<span class="score-pill term-assessment-score">${escapeHtml(formatComplianceScore(numericScore))}/${escapeHtml(formatComplianceScore(numericMaxScore))}</span>`
+        const score = (isTermAssessment || isPerformanceTask) && hasMax
+          ? `<span class="score-pill term-assessment-score">${hasScore ? escapeHtml(formatComplianceScore(numericScore)) : "—"} / ${escapeHtml(formatComplianceScore(numericMaxScore))}</span>`
           : "";
 
         return `
@@ -1231,6 +1306,7 @@
       }).join("");
     } catch (err) {
       target.innerHTML = errorState(err);
+      showStudentGrade(null, "complianceGrade", err);
     }
   }
 

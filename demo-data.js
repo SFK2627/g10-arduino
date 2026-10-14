@@ -63,34 +63,27 @@ window.G10_DEMO = {
 
   compliance: {
     term: 1,
+    // Sample numbers shown ONLY in local Demo Mode (not a real student's data).
+    termGrade: 89,
+    gradeStatus: "available",
+    gradeType: "recorded",
+    gradeSource: "AW",
     lastUpdated: "2026-08-14T20:35:00+08:00",
     tasks: [
-      {
-        taskId: "mini-peta-3",
-        displayName: "Mini PETA 3 - Emergency Lights",
-        status: "excellent",
-        percentageBand: "green",
-        practicalExam: false
-      },
-      {
-        taskId: "mini-peta-2",
-        displayName: "Mini PETA 2 - Basic Arduino Circuit",
-        status: "missing",
-        percentageBand: "red",
-        practicalExam: false,
-        missing: true,
-        missingReason: "No submission recorded yet."
-      },
-      {
-        taskId: "practical-exam",
-        displayName: "Practical Exam",
-        status: "excellent",
-        percentageBand: "green",
-        practicalExam: true,
-        score: 38,
-        maxScore: 40,
-        missing: false
-      }
-    ]
+      { taskId: "ww1", category: "ww", categoryLabel: "Written Work",
+        displayName: "Arduino Concepts Quiz", status: "Completed", missing: false },
+      { taskId: "ww2", category: "ww", categoryLabel: "Written Work",
+        displayName: "Circuit Diagram Exercise", status: "Missing", missing: true },
+      { taskId: "pt1", category: "pt", categoryLabel: "Performance Task",
+        displayName: "Mini PETA - Emergency Lights", status: "Completed", missing: false,
+        score: 18, maxScore: 20, scorePercent: 90, percentageBand: "lime" },
+      { taskId: "pt2", category: "pt", categoryLabel: "Performance Task",
+        displayName: "Arduino Array Activity", status: "Completed", missing: false,
+        score: 38, maxScore: 40, scorePercent: 95, percentageBand: "green" },
+      { taskId: "ta1", category: "ta", categoryLabel: "Term Assessment",
+        displayName: "Midterm Examination", status: "Completed", missing: false,
+        score: 42, maxScore: 50, scorePercent: 84, percentageBand: "yellow" }
+    ],
+    summary: { complete: 4, missing: 1, total: 5 }
   }
 };

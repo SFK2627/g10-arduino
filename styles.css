@@ -7585,3 +7585,97 @@ button {
     margin-top: -2px;
   }
 }
+
+/* ============================================================
+   v24 — Published term grade (dashboard, compliance, login reminder)
+   ============================================================ */
+.student-running-grade {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 21px 24px;
+  border: 1px solid #dbe0e7;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #171b23 0%, #252d3b 100%);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(20, 25, 35, .1);
+}
+.student-running-grade-copy { min-width: 0; display: grid; gap: 6px; }
+.grade-card-kicker {
+  color: #c9d4e6;
+  font-size: .7rem;
+  font-weight: 850;
+  letter-spacing: .11em;
+  line-height: 1.4;
+}
+.grade-card-number {
+  font-size: clamp(2rem, 4vw, 3.1rem);
+  font-weight: 900;
+  line-height: 1.07;
+  letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.student-running-grade small {
+  color: #d8dfeb;
+  font-size: .75rem;
+  line-height: 1.5;
+}
+.grade-card-term {
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 10px;
+  color: #e9eef7;
+  background: rgba(255,255,255,.08);
+  text-align: center;
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .07em;
+}
+.dashboard-grade { margin: 0 0 17px; }
+.compliance-grade { margin: 0 0 18px; }
+.login-reminder-grade {
+  margin: 14px 0 0;
+  padding: 15px 17px;
+  border-radius: 14px;
+  box-shadow: none;
+}
+.login-reminder-grade .grade-card-number { font-size: clamp(2rem, 5vw, 2.6rem); }
+.login-reminder-grade .grade-card-term { max-width: 96px; }
+.admin-grade-preview-note {
+  display: block;
+  margin-top: 3px;
+  font-size: .69rem;
+  color: #6e747f;
+  line-height: 1.4;
+}
+.admin-term-grade-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 16px 20px;
+  border: 1px solid #dfe4eb;
+  border-radius: 14px;
+  background: #f7f9fb;
+}
+.admin-term-grade-strip span { color: #626c79; font-size: .78rem; font-weight: 750; }
+.admin-term-grade-strip strong { color: #192333; font-size: 1.55rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+.grade-legend-note { margin: 0 0 13px; font-size: .8rem; color: #5d6570; line-height: 1.5; }
+@media (max-width: 620px) {
+  .student-running-grade { padding: 16px 17px; gap: 10px; border-radius: 15px; }
+  .grade-card-number { font-size: 2.3rem; }
+  .grade-card-kicker { font-size: .63rem; }
+  .grade-card-term { font-size: .58rem; padding: 8px; max-width: 100px; }
+  .student-running-grade small { font-size: .7rem; }
+  .login-reminder-grade { padding: 14px; }
+  .login-reminder-grade .grade-card-number { font-size: 2.15rem; }
+}
+@media (max-width: 380px) {
+  .grade-card-term { max-width: 82px; font-size: .53rem; }
+  .student-running-grade { gap: 8px; }
+}

@@ -155,6 +155,15 @@
           </div>
         </div>
 
+        <article class="student-running-grade dashboard-grade" aria-label="Your running term grade">
+          <div class="student-running-grade-copy">
+            <span class="grade-card-kicker" id="dashboardGradeLabel">RUNNING TERM GRADE</span>
+            <strong class="grade-card-number" id="dashboardGradeValue">—</strong>
+            <small id="dashboardGradeNote">Loading your published E-Class Record…</small>
+          </div>
+          <div class="grade-card-term" id="dashboardGradeTerm">TERM 1</div>
+        </article>
+
         <div class="dashboard-grid">
           <article class="info-card">
             <div class="card-kicker">CURRENT TERM</div>
@@ -260,6 +269,15 @@
           </div>
         </div>
 
+        <article class="student-running-grade compliance-grade" aria-label="Your running term grade">
+          <div class="student-running-grade-copy">
+            <span class="grade-card-kicker" id="complianceGradeLabel">RUNNING TERM GRADE</span>
+            <strong class="grade-card-number" id="complianceGradeValue">—</strong>
+            <small id="complianceGradeNote">Loading your published E-Class Record…</small>
+          </div>
+          <div class="grade-card-term">FROM E-CLASS RECORD</div>
+        </article>
+
         <article class="compliance-summary">
           <div class="compliance-summary-item compliance-summary-updated">
             <span class="card-kicker">LAST UPDATED</span>
@@ -345,6 +363,15 @@
           </div>
         </div>
 
+        <section class="student-running-grade login-reminder-grade" aria-label="Your term grade">
+          <div class="student-running-grade-copy">
+            <span class="grade-card-kicker" id="studentReminderGradeLabel">RUNNING TERM GRADE</span>
+            <strong class="grade-card-number" id="studentReminderGradeValue">—</strong>
+            <small id="studentReminderGradeNote">Based on your published E-Class Record</small>
+          </div>
+          <div class="grade-card-term" id="studentReminderGradeTerm">TERM 1</div>
+        </section>
+
         <section id="studentLoginReminderMissingSection" class="login-reminder-missing-section hidden">
           <div class="login-reminder-list-head">
             <span>MISSING REQUIREMENTS</span>
@@ -404,12 +431,13 @@
     <div class="compliance-legend-dialog">
       <header class="compliance-legend-head">
         <div>
-          <span class="card-kicker">SCORE GUIDE</span>
-          <h3 id="complianceLegendTitle">Score Legend by Color and Percentage</h3>
+          <span class="card-kicker">PT AND TERM ASSESSMENT GUIDE</span>
+          <h3 id="complianceLegendTitle">Performance Task &amp; Term Assessment Scores</h3>
         </div>
         <button class="viewer-close compliance-legend-close" type="button" data-close-compliance-legend aria-label="Close score legend">×</button>
       </header>
 
+      <p class="grade-legend-note">Written Works only show Completed or Missing; their scores and percentages remain private.</p>
       <div class="compliance-legend-list">
         <div class="compliance-legend-row legend-black">
           <span class="legend-swatch"></span>

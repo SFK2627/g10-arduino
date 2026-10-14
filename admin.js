@@ -3159,6 +3159,10 @@
     }).join("");
 
     body.innerHTML = `
+      <div class="admin-term-grade-strip">
+        <span>${escapeHtml(adminTermGradeNote(snapshot))}</span>
+        <strong>${escapeHtml(adminTermGradeValue(snapshot))}</strong>
+      </div>
       <div class="admin-student-compliance-summary">
         <div>
           <span>Total Tasks</span>
@@ -3413,7 +3417,7 @@
       key: "ta",
       title: "Term Assessment",
       short: "TA",
-      count: 2,
+      count: 10,
       defaultName: number => `Term Assessment ${number}`
     }
   ];
@@ -3926,6 +3930,21 @@
     }
   }
 
+  function adminTermGradeValue(snapshot) {
+    if (String(snapshot?.gradeStatus || "").toUpperCase() === "INC") return "INC";
+    const value = snapshot?.termGrade;
+    if (value === null || value === undefined || value === "") return "Not available";
+    const number = Number(value);
+    return Number.isFinite(number) ? String(Math.round(number * 100) / 100) : "Not available";
+  }
+
+  function adminTermGradeNote(snapshot) {
+    if (snapshot?.gradeType === "recorded") return "Recorded Term Grade (AW)";
+    if (snapshot?.gradeType === "provisional") return "Provisional / Transmuted (AV)";
+    if (snapshot?.gradeType === "incomplete") return "Recorded status (AW)";
+    return "No grade in E-Class Record";
+  }
+
   function renderSyncPreview(payload) {
     const sections = Array.isArray(payload?.sections) ? payload.sections : [];
     const errors = Array.isArray(payload?.errors) ? payload.errors : [];
@@ -3979,6 +3998,7 @@
             <th>Section</th>
             <th>Student ID</th>
             <th>Name</th>
+            <th>Running Grade</th>
             <th>Requirements</th>
             <th>Missing</th>
           </tr>
@@ -3989,6 +4009,10 @@
               <td>${escapeHtml(student.section || "")}</td>
               <td>${escapeHtml(student.studentId || "")}</td>
               <td>${escapeHtml(student.fullName || "")}</td>
+              <td>
+                <strong>${escapeHtml(adminTermGradeValue(student))}</strong>
+                <small class="admin-grade-preview-note">${escapeHtml(adminTermGradeNote(student))}</small>
+              </td>
               <td>${escapeHtml(String((student.tasks || []).length))}</td>
               <td>${escapeHtml(String(student.missingCount || 0))}</td>
             </tr>
@@ -3996,6 +4020,31 @@
         </tbody>
       </table>
     `;
+  }
+
+  /**
+   * Privacy boundary: a student receives no Written Work scores, HPS,
+   * percentages, grade bands, or unknown future private fields.
+   * An allowlist is safer than simply deleting the currently known fields.
+   */
+  function studentFacingComplianceTask(task) {
+    const category = String(task?.category || "").toLowerCase();
+    const taskId = String(task?.taskId || "").toLowerCase();
+    const isWrittenWork = category === "ww" || /^ww\d+$/.test(taskId);
+
+    if (!isWrittenWork) return { ...task };  // PT / TA: actual scores allowed
+
+    return {
+      schemaVersion: task.schemaVersion || 4,
+      taskId: task.taskId || "",
+      displayName: task.displayName || "Written Work",
+      category: "ww",
+      categoryLabel: task.categoryLabel || "Written Work",
+      taskNumber: Number(task.taskNumber) || 0,
+      status: task.missing === true ? "Missing" : "Completed",
+      missing: task.missing === true,
+      completed: task.missing !== true
+    };
   }
 
   async function publishSync() {
@@ -4056,24 +4105,10 @@
           const missingCount = rawTasks.filter(task => task && task.missing === true).length;
           const completeCount = Math.max(0, rawTasks.length - missingCount);
 
-          // Student-facing snapshot keeps the existing privacy rule:
-          // WW/PT raw score and HPS are removed. Term Assessment may show score.
-          const studentTasks = rawTasks.map(task => {
-            const clean = { ...task };
-            const category = String(clean.category || "").toLowerCase();
-            const taskId = String(clean.taskId || "").toLowerCase();
-            const isTermAssessment =
-              category === "ta" ||
-              taskId.indexOf("ta") === 0;
-
-            if (!isTermAssessment) {
-              delete clean.score;
-              delete clean.maxScore;
-              delete clean.showScore;
-            }
-
-            return clean;
-          });
+          // Student-facing snapshot: Written Works are strictly completion only.
+          // PT and TA keep their raw score, HPS and percentage/color band.
+          // Do not publish WW scores, HPS, percentages or any derived grade band.
+          const studentTasks = rawTasks.map(studentFacingComplianceTask);
 
           const studentRef = db.collection("studentCompliance")
             .doc(normalizedStudentId)
@@ -4093,6 +4128,12 @@
             fullName: String(row.fullName || "").trim(),
             term: Number(payload.term),
             section: normalizedSection,
+            // Grade is obtained directly from AW (or AV when provisional).
+            // No client-side recomputation is performed.
+            termGrade: row.termGrade ?? null,
+            gradeStatus: String(row.gradeStatus || "not-available"),
+            gradeType: String(row.gradeType || "unavailable"),
+            gradeSource: String(row.gradeSource || ""),
             lastUpdated: new Date().toISOString(),
             summary: {
               complete: completeCount,
@@ -4108,13 +4149,13 @@
             ...commonSnapshot,
             tasks: studentTasks,
             source: "e-class-record",
-            complianceSchemaVersion: 4
+            complianceSchemaVersion: 5
           }, { merge: true });
 
           batch.set(adminRef, {
             ...commonSnapshot,
             tasks: rawTasks,
-            adminComplianceSchemaVersion: 2
+            adminComplianceSchemaVersion: 3
           }, { merge: true });
 
           pendingWrites += 2;
