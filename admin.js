@@ -20,7 +20,12 @@
   let currentUnreadNotifications = [];
 
   let activeStudentComplianceProfile = null;
+  let studentComplianceNavigationUids = [];
+  let studentComplianceNavigationSource = "students";
+  let studentComplianceLoadSerial = 0;
+  let studentComplianceOpenSerial = 0;
   let missingComplianceOverviewRows = [];
+  let missingComplianceNavigationRows = [];
 
   const DEFAULT_LOGIN_REMINDER_POSITIVE =
     "Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.";
@@ -87,6 +92,8 @@
     $("#refreshAdminDashboard").addEventListener("click", loadAdminDashboardStats);
     $("#missingComplianceCard").addEventListener("click", openMissingComplianceOverview);
     $("#studentComplianceTerm").addEventListener("change", loadActiveStudentComplianceProfile);
+    $("#studentCompliancePreviousBtn").addEventListener("click", () => stepStudentCompliance(-1));
+    $("#studentComplianceNextBtn").addEventListener("click", () => stepStudentCompliance(1));
     $("#missingOverviewTerm").addEventListener("change", loadMissingComplianceOverview);
     $("#missingOverviewSection").addEventListener("change", renderMissingComplianceOverview);
     $("#missingOverviewSort").addEventListener("change", renderMissingComplianceOverview);
@@ -100,6 +107,17 @@
     });
 
     document.addEventListener("keydown", e => {
+      // Arrow keys only navigate when the View Scores modal is open. Do not
+      // steal arrow keys from inputs, dropdowns, or editable elements.
+      if (!$("#studentComplianceModal").classList.contains("hidden") &&
+          (e.key === "ArrowLeft" || e.key === "ArrowRight") &&
+          !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey &&
+          !e.target.closest("input, select, textarea, [contenteditable], [role='combobox']")) {
+        e.preventDefault();
+        stepStudentCompliance(e.key === "ArrowRight" ? 1 : -1);
+        return;
+      }
+
       if (e.key !== "Escape") return;
 
       if (!$("#adminLoginReminderPreviewModal").classList.contains("hidden")) {
@@ -2575,10 +2593,8 @@
     }
   }
 
-  function renderStudentProfiles() {
-    const target = $("#adminStudentsList");
-    if (!target) return;
-
+  // Single source of truth for list order and the View Scores navigation.
+  function filteredStudentProfiles() {
     const selectedSection = $("#studentSectionFilter")?.value || "*";
     const searchQuery = String($("#studentSearchInput")?.value || "")
       .trim()
@@ -2604,6 +2620,14 @@
         return searchable.includes(searchQuery);
       });
     }
+
+    return rows;
+  }
+
+  function renderStudentProfiles() {
+    const target = $("#adminStudentsList");
+    if (!target) return;
+    const rows = filteredStudentProfiles();
 
     target.innerHTML = rows.length ? rows.map(s => `
       <div class="admin-list-item student-profile-list-item">
@@ -2647,7 +2671,7 @@
 
     $$("[data-student-profile-uid]").forEach(btn => {
       btn.addEventListener("click", () => {
-        openStudentComplianceProfile(btn.dataset.studentProfileUid);
+        openStudentComplianceProfile(btn.dataset.studentProfileUid, null, "students");
       });
     });
 
@@ -3010,17 +3034,64 @@
     };
   }
 
-  async function openStudentComplianceProfile(uid, requestedTerm = null) {
-    let student = cachedStudentProfiles.find(item => item.uid === uid);
+  function studentComplianceQueue(source, selectedUid) {
+    const list = source === "missing"
+      ? missingComplianceNavigationRows
+      : filteredStudentProfiles();
+    const ids = list.map(student => student.uid).filter(Boolean);
+    // A modal opened outside the Students tab may not be included in that tab's
+    // filters. In that case show this student without silently switching lists.
+    return ids.includes(selectedUid) ? ids : [selectedUid];
+  }
 
+  function updateStudentComplianceNavigation() {
+    const index = studentComplianceNavigationUids.indexOf(activeStudentComplianceProfile?.uid);
+    const total = studentComplianceNavigationUids.length;
+    const previous = $("#studentCompliancePreviousBtn");
+    const next = $("#studentComplianceNextBtn");
+    previous.disabled = index <= 0;
+    next.disabled = index < 0 || index >= total - 1;
+    $("#studentCompliancePosition").textContent = index < 0
+      ? "Student"
+      : `Student ${index + 1} of ${total}`;
+    $("#studentComplianceNavigationContext").textContent =
+      studentComplianceNavigationSource === "missing"
+        ? "Missing requirements list"
+        : ($("#studentSectionFilter")?.value || "*") === "*"
+          ? "Filtered students / All sections"
+          : ($("#studentSectionFilter")?.selectedOptions?.[0]?.textContent || "Section");
+  }
+
+  function stepStudentCompliance(direction) {
+    if ($("#studentComplianceModal").classList.contains("hidden")) return;
+    const current = studentComplianceNavigationUids.indexOf(activeStudentComplianceProfile?.uid);
+    const nextIndex = current + direction;
+    if (current < 0 || nextIndex < 0 || nextIndex >= studentComplianceNavigationUids.length) return;
+    const uid = studentComplianceNavigationUids[nextIndex];
+    // Keep the exact selected term, even across different sections.
+    const term = Number($("#studentComplianceTerm").value || currentAdminTerm());
+    void openStudentComplianceProfile(uid, term, "preserve");
+  }
+
+  async function openStudentComplianceProfile(uid, requestedTerm = null, source = "students") {
+    const openSerial = ++studentComplianceOpenSerial;
+    // Source = preserve is used for Previous / Next: the frozen filtered order
+    // remains stable until the modal is reopened from the list.
+    if (source !== "preserve") {
+      studentComplianceNavigationSource = source;
+      studentComplianceNavigationUids = studentComplianceQueue(source, uid);
+    }
+
+    let student = cachedStudentProfiles.find(item => item.uid === uid);
     if (!student) {
       const snap = await db.collection("students").doc(uid).get();
+      if (openSerial !== studentComplianceOpenSerial) return;
       if (!snap.exists) return;
       student = { uid: snap.id, ...snap.data() };
     }
+    if (openSerial !== studentComplianceOpenSerial) return;
 
     activeStudentComplianceProfile = student;
-
     const term = Number(requestedTerm || currentAdminTerm());
     $("#studentComplianceTerm").value = String(term);
     $("#studentComplianceModalTitle").textContent =
@@ -3033,7 +3104,8 @@
 
     $("#studentComplianceModal").classList.remove("hidden");
     document.body.classList.add("modal-open");
-
+    updateStudentComplianceNavigation();
+    $("#studentComplianceModalBody").scrollTop = 0;
     await loadActiveStudentComplianceProfile();
   }
 
@@ -3042,11 +3114,17 @@
     if (!student) return;
 
     const term = Number($("#studentComplianceTerm").value || currentAdminTerm());
+    const serial = ++studentComplianceLoadSerial;
     const body = $("#studentComplianceModalBody");
-    body.innerHTML = '<div class="admin-modal-loading">Loading student scores…</div>';
+    body.scrollTop = 0;
+    body.innerHTML = '<div class="admin-modal-loading" role="status">Loading student scores…</div>';
 
     try {
       const result = await getStudentComplianceSnapshot(student, term, true);
+      if (serial !== studentComplianceLoadSerial ||
+          student.uid !== activeStudentComplianceProfile?.uid ||
+          Number($("#studentComplianceTerm").value) !== term ||
+          $("#studentComplianceModal").classList.contains("hidden")) return;
       renderStudentComplianceProfile(
         student,
         term,
@@ -3055,6 +3133,8 @@
         result.adminSnapshotMissing === true
       );
     } catch (err) {
+      if (serial !== studentComplianceLoadSerial ||
+          student.uid !== activeStudentComplianceProfile?.uid) return;
       body.innerHTML = `
         <div class="admin-compliance-empty">
           <strong>Could not load this student's Compliance.</strong>
@@ -3218,7 +3298,10 @@
 
   function closeStudentComplianceProfile() {
     $("#studentComplianceModal").classList.add("hidden");
+    ++studentComplianceLoadSerial;
+    ++studentComplianceOpenSerial;
     activeStudentComplianceProfile = null;
+    studentComplianceNavigationUids = [];
 
     if ($("#missingComplianceModal").classList.contains("hidden")) {
       document.body.classList.remove("modal-open");
@@ -3347,6 +3430,8 @@
       return String(a.fullName).localeCompare(String(b.fullName), undefined, { sensitivity: "base" });
     });
 
+    // Preserve exactly the visible sorting for Previous / Next navigation.
+    missingComplianceNavigationRows = rows;
     const totalMissingTasks = rows.reduce((sum, row) => sum + row.missingCount, 0);
 
     summary.innerHTML = `
@@ -3389,7 +3474,8 @@
       btn.addEventListener("click", () => {
         openStudentComplianceProfile(
           btn.dataset.missingStudentUid,
-          Number($("#missingOverviewTerm").value || currentAdminTerm())
+          Number($("#missingOverviewTerm").value || currentAdminTerm()),
+          "missing"
         );
       });
     });
@@ -3398,6 +3484,7 @@
   function closeMissingComplianceOverview() {
     $("#missingComplianceModal").classList.add("hidden");
     missingComplianceOverviewRows = [];
+    missingComplianceNavigationRows = [];
 
     if ($("#studentComplianceModal").classList.contains("hidden")) {
       document.body.classList.remove("modal-open");

@@ -205,29 +205,50 @@
       return;
     }
 
-    settings = await G10DataService.getSettings(true);
+    // As soon as authentication succeeds, replace Login with a loading gate.
+    // The Dashboard must not be painted before the login reminder is visible.
+    const reminderRequested = loginReminderRequested;
+    if (reminderRequested) {
+      $("#studentLoginPreparing").classList.remove("hidden");
+      $("#loginView").classList.add("hidden");
+      $("#appView").classList.add("hidden");
+    }
+
+    try {
+      settings = await G10DataService.getSettings(true);
+    } catch (err) {
+      $("#studentLoginPreparing").classList.add("hidden");
+      $("#loginView").classList.remove("hidden");
+      throw err;
+    }
     currentTerm = Number(settings.currentTerm || G10_CONFIG.app.defaultTerm || 1);
     $("#termSelect").value = String(currentTerm);
 
     renderProfile();
     renderSettings();
+    loginReminderRequested = false;
 
+    if (reminderRequested && studentReminderSettings().enabled && profile?.studentId) {
+      try {
+        // Only compliance/reminder data is required here. Other dashboard
+        // requests do not block the reminder's appearance.
+        if (await maybeShowStudentLoginReminder()) return;
+      } catch (err) {
+        console.warn("Login reminder could not be prepared:", err);
+      }
+    }
+
+    revealStudentPortal();
+  }
+
+  function revealStudentPortal() {
+    $("#studentLoginPreparing").classList.add("hidden");
     $("#loginView").classList.add("hidden");
     $("#appView").classList.remove("hidden");
-
-    await Promise.all([
-      refreshDashboardMaterialCards(true),
-      refreshDashboardAnnouncement(true),
-      refreshDashboardRunningGrade(false)
-    ]);
-    navigate("dashboard");
-
-    if (loginReminderRequested) {
-      // Triggered by an explicit login or by a restored authenticated
-      // student session after refresh/page reload.
-      loginReminderRequested = false;
-      await maybeShowStudentLoginReminder();
-    }
+    // Start the dashboard immediately; do not force multiple sequential
+    // refreshes before students can interact with their portal.
+    void navigate("dashboard").catch(err => console.warn("Dashboard loading failed:", err));
+    void refreshDashboardRunningGrade(false).catch(err => console.warn("Running grade loading failed:", err));
   }
 
 
@@ -264,17 +285,20 @@
 
   async function maybeShowStudentLoginReminder() {
     const reminder = studentReminderSettings();
-    if (!reminder.enabled || !profile?.studentId) return;
+    if (!reminder.enabled || !profile?.studentId) return false;
 
     let record = null;
     let loadError = null;
 
     try {
-      record = await G10DataService.getCompliance(
-        profile.studentId,
-        currentTerm,
-        true
-      );
+      // Never leave a student on an endless loading screen if the connection
+      // stalls. Show a useful fallback reminder after the timeout instead.
+      record = await Promise.race([
+        G10DataService.getCompliance(profile.studentId, currentTerm, true),
+        new Promise((_, reject) => setTimeout(
+          () => reject(new Error("The grade check is taking longer than expected.")), 9000
+        ))
+      ]);
     } catch (err) {
       loadError = err;
       console.warn("Could not load Login Reminder compliance:", err);
@@ -294,7 +318,8 @@
     document.body.classList.add("modal-open");
 
     if (reminder.musicEnabled && reminder.musicUrl) {
-      await startLoginReminderAudio(
+      // Autoplay is optional and must never delay or block modal display.
+      void startLoginReminderAudio(
         $("#studentLoginReminderAudio"),
         $("#studentLoginReminderPlayMusicBtn"),
         reminder.musicUrl
@@ -305,6 +330,7 @@
         $("#studentLoginReminderPlayMusicBtn")
       );
     }
+    return true;
   }
 
   function renderStudentLoginReminder({ missingTasks, reminder, record, loadError }) {
@@ -463,6 +489,10 @@
       $("#viewerModal").classList.contains("hidden")
     ) {
       document.body.classList.remove("modal-open");
+    }
+    // Only now unhide the portal: no Dashboard flash before the reminder.
+    if (profile && $("#appView").classList.contains("hidden")) {
+      revealStudentPortal();
     }
   }
 
@@ -1459,6 +1489,7 @@
 
   async function logout() {
     loginReminderRequested = false;
+    $("#studentLoginPreparing").classList.add("hidden");
 
     if (!$("#studentLoginReminderModal").classList.contains("hidden")) {
       closeStudentLoginReminder();

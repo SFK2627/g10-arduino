@@ -1,16 +1,16 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v27-ww-color-repair";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v28-student-nav-login-first";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=27-ww-repair",
+  "./styles.css?v=28-student-nav-login-first",
   "./firebase-config.js",
-  "./demo-data.js?v=27-ww-repair",
-  "./data-service.js?v=27-ww-repair",
-  "./app.js?v=27-ww-repair",
-  "./admin.js?v=27-ww-repair",
-  "./pwa.js?v=27-ww-repair",
+  "./demo-data.js?v=28-student-nav-login-first",
+  "./data-service.js?v=28-student-nav-login-first",
+  "./app.js?v=28-student-nav-login-first",
+  "./admin.js?v=28-student-nav-login-first",
+  "./pwa.js?v=28-student-nav-login-first",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
