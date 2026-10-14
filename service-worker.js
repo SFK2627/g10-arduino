@@ -1,16 +1,16 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v26-ww-color-bands";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v27-ww-color-repair";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css",
+  "./styles.css?v=27-ww-repair",
   "./firebase-config.js",
-  "./demo-data.js",
-  "./data-service.js",
-  "./app.js",
-  "./admin.js",
-  "./pwa.js",
+  "./demo-data.js?v=27-ww-repair",
+  "./data-service.js?v=27-ww-repair",
+  "./app.js?v=27-ww-repair",
+  "./admin.js?v=27-ww-repair",
+  "./pwa.js?v=27-ww-repair",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

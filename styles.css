@@ -7711,3 +7711,7 @@ button {
   .grade-card-term { max-width: 82px; font-size: .53rem; }
   .student-running-grade { gap: 8px; }
 }
+
+/* WW repair workflow status — nonintrusive, teacher-side only */
+.ww-repair-help { color: var(--muted); font-size: .77rem; line-height: 1.5; margin: 10px 0 4px; }
+.ww-color-pending { margin-bottom: 10px; padding: 12px; }

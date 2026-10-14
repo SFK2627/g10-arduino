@@ -1266,7 +1266,22 @@
           </div>`;
       }
 
-      target.innerHTML = tasks.map(task => {
+      const pendingWWColors = tasks.filter(task => {
+        const category = String(task?.category || "").toLowerCase();
+        const id = String(task?.taskId || "").toLowerCase();
+        const ww = category === "ww" || /^ww\d+$/.test(id);
+        return ww && !isMissingTask(task) &&
+          !["red", "orange", "yellow", "lime", "green"].includes(
+            String(task?.percentageBand || "").toLowerCase()
+          );
+      });
+      const pendingNotice = pendingWWColors.length
+        ? `<div class="complete-message neutral ww-color-pending" role="status">` +
+          `Written Work colors have not been published for ${pendingWWColors.length} completed task(s) yet. ` +
+          `Ask your teacher to check/repair the WW colors in Admin Compliance. ` +
+          `Scores remain private.</div>`
+        : "";
+      target.innerHTML = pendingNotice + tasks.map(task => {
         const missing = isMissingTask(task);
         const rawPercent = task?.scorePercent;
         const hasPercent = rawPercent !== null && rawPercent !== undefined &&

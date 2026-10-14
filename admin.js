@@ -153,6 +153,7 @@
     });
     $("#previewComplianceBtn").addEventListener("click", previewSync);
     $("#publishSyncBtn").addEventListener("click", publishSync);
+    $("#repairWWColorsBtn").addEventListener("click", repairWrittenWorkColors);
 
     $("#refreshLessonsAdmin").addEventListener("click", loadAdminLessons);
     $("#refreshActivitiesAdmin").addEventListener("click", loadAdminActivities);
@@ -3985,6 +3986,20 @@
         ? `${sections.length} section(s) • ${totalStudents} student row(s) • ${payload.sheetName || `TERM_${payload.term}`} • ${adminRunningGradeAsOf(payload.previewedAt)}`
         : "No section preview is available.";
 
+    const previewWWMissingBand = sections.reduce((total, section) => total +
+      (section.students || []).reduce((count, student) => count +
+        (student.tasks || []).filter(t => {
+          const isWW = String(t?.category || "").toLowerCase() === "ww";
+          return isWW && !t?.missing && studentFacingComplianceTask(t).percentageBand === "neutral";
+        }).length, 0), 0);
+    if (previewWWMissingBand > 0) {
+      setStatus("#wwRepairStatus",
+        `WARNING: ${previewWWMissingBand} completed Written Work(s) have no usable score/HPS or color. ` +
+        `Publishing will stop rather than silently show gray.`, false);
+    } else {
+      setStatus("#wwRepairStatus", "WW color validation: all completed Written Works have a valid color band.", true);
+    }
+
     $("#syncActiveTasks").innerHTML = sections.length
       ? `
         <div class="compliance-v2-preview-summary">
@@ -4069,11 +4084,19 @@
     const hasPercent = rawPercent !== null && rawPercent !== undefined &&
       rawPercent !== "" && Number.isFinite(Number(rawPercent));
     const sourceBand = String(task?.percentageBand || "").toLowerCase();
+    const rawScore = task?.score;
+    const rawHps = task?.maxScore;
+    const hasRawRatio = rawScore !== null && rawScore !== undefined && rawScore !== "" &&
+      rawHps !== null && rawHps !== undefined && rawHps !== "" &&
+      Number.isFinite(Number(rawScore)) && Number.isFinite(Number(rawHps)) &&
+      Number(rawHps) > 0;
     const colorBand = missing
       ? "black"
       : hasPercent
         ? adminComplianceBandFromPercent(Number(rawPercent))
-        : (allowedBands.includes(sourceBand) ? sourceBand : "neutral");
+        : hasRawRatio
+          ? adminComplianceBandFromPercent(Math.round((Number(rawScore) / Number(rawHps)) * 100))
+          : (allowedBands.includes(sourceBand) ? sourceBand : "neutral");
 
     return {
       schemaVersion: 5,
@@ -4087,6 +4110,120 @@
       completed: !missing,
       percentageBand: colorBand // Broad range only; never publish WW numbers
     };
+  }
+
+  /**
+   * Repair gray Written Works from previously published admin-only snapshots.
+   * NEVER reads WW scores in the student app, and NEVER copies raw admin tasks
+   * into studentCompliance. This is a deliberate admin-only recovery route.
+   */
+  async function repairWrittenWorkColors() {
+    const button = $("#repairWWColorsBtn");
+    setBusy(button, true, "CHECKING WW COLORS…");
+    setStatus("#wwRepairStatus", "Checking published records for selected sections…");
+    try {
+      // Use the visible selection; repair never needs a Google Sheets link.
+      const checked = $$('[data-compliance-section-check]')
+        .filter(box => box.checked)
+        .map(box => normalizeSectionName(
+          (complianceSettingsCache?.sections || [])[Number(box.dataset.complianceSectionCheck)]?.section
+        ));
+      if (!checked.length) throw new Error("Select at least one section to repair.");
+      const selected = new Set(checked);
+      const term = Number($("#syncTerm").value || 1);
+      if (![1,2,3].includes(term)) throw new Error("Select a valid term first.");
+
+      await loadSectionDirectory(true);
+      const profiles = cachedStudentProfiles.filter(s => selected.has(normalizeSectionName(s.section)));
+      if (!profiles.length) throw new Error("No student profiles found for the checked section(s).");
+
+      const stats = {checked: 0, patched: 0, wwFixed: 0, wwAlreadyColored: 0,
+        missing: 0, unresolved: 0, missingAdmin: 0, missingStudent: 0, errors: []};
+      for (const profile of profiles) {
+        const studentId = G10DataService.normalizeStudentId(profile.studentId);
+        if (!studentId) continue;
+        stats.checked++;
+        const docPath = db.collection("studentCompliance").doc(studentId).collection("terms").doc(`term${term}`);
+        const adminPath = db.collection("adminCompliance").doc(studentId).collection("terms").doc(`term${term}`);
+        try {
+          const [studentDoc, teacherDoc] = await Promise.all([docPath.get({source:"server"}), adminPath.get({source:"server"})]);
+          if (!studentDoc.exists) { stats.missingStudent++; continue; }
+          if (!teacherDoc.exists) { stats.missingAdmin++; continue; }
+          const student = studentDoc.data() || {};
+          const teacher = teacherDoc.data() || {};
+          const published = Array.isArray(student.tasks) ? student.tasks : [];
+          const teacherTasks = Array.isArray(teacher.tasks) ? teacher.tasks : [];
+          const authoritativeWW = new Map(teacherTasks
+            .filter(t => String(t?.category || "").toLowerCase() === "ww" || /^ww\d+$/i.test(String(t?.taskId || "")))
+            .map(t => [String(t.taskId || "").toLowerCase(), t]));
+          if (!published.length || !authoritativeWW.size) { stats.unresolved++; continue; }
+
+          let changed = false;
+          let unresolvedHere = 0;
+          const newTasks = published.map(t => {
+            const id = String(t?.taskId || "").toLowerCase();
+            const isWW = String(t?.category || "").toLowerCase() === "ww" || /^ww\d+$/i.test(id);
+            if (!isWW) return t;  // Keep PT/TA records unchanged.
+            const source = authoritativeWW.get(id);
+            if (!source) {
+              unresolvedHere++;
+              const sanitized = studentFacingComplianceTask(t);
+              if (JSON.stringify(t) !== JSON.stringify(sanitized)) changed = true;
+              return sanitized;
+            }
+            const clean = studentFacingComplianceTask(source); // WW strict allowlist
+            const oldBand = String(t?.percentageBand || "").toLowerCase();
+            if (!clean.missing && clean.percentageBand === "neutral") {
+              unresolvedHere++;
+              // No score/HPS: do not invent any color.
+              const sanitized = studentFacingComplianceTask(t);
+              if (JSON.stringify(t) !== JSON.stringify(sanitized)) changed = true;
+              return sanitized;
+            }
+            if (oldBand !== clean.percentageBand) {
+              stats.wwFixed++;
+              changed = true;
+            } else {
+              stats.wwAlreadyColored++;
+            }
+            // Rebuild ALL WW fields to remove accidentally published raw data.
+            if (JSON.stringify(t) !== JSON.stringify(clean)) changed = true;
+            return clean;
+          });
+          stats.unresolved += unresolvedHere;
+          if (changed) {
+            await docPath.update({
+              tasks: newTasks,
+              complianceSchemaVersion: 7,
+              wwColorsVerifiedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            stats.patched++;
+          }
+        } catch (err) {
+          stats.errors.push(`${studentId}: ${String(err?.message || err)}`);
+        }
+      }
+      const parts = [
+        `Term ${term}: ${stats.checked} student records checked`,
+        `${stats.patched} updated`,
+        `${stats.wwFixed} WW color bands repaired`,
+        `${stats.wwAlreadyColored} already colored`
+      ];
+      if (stats.unresolved) parts.push(`${stats.unresolved} WW unresolved (missing score/HPS or source)`);
+      if (stats.missingAdmin) parts.push(`${stats.missingAdmin} missing admin raw snapshots`);
+      if (stats.missingStudent) parts.push(`${stats.missingStudent} missing student snapshots`);
+      if (stats.errors.length) parts.push(`${stats.errors.length} read/write errors`);
+      const guidance = (stats.unresolved || stats.missingAdmin || stats.missingStudent)
+        ? " Some records require SYNC CHECKED SECTIONS & PUBLISH from Google Sheets."
+        : " Students should open Compliance and press Refresh.";
+      setStatus("#wwRepairStatus", parts.join(" • ") + "." + guidance +
+        (stats.errors.length ? ` First error: ${stats.errors[0]}` : ""),
+        stats.errors.length === 0 && stats.unresolved === 0 && stats.missingAdmin === 0);
+    } catch (err) {
+      setStatus("#wwRepairStatus", String(err?.message || err), false);
+    } finally {
+      setBusy(button, false, "CHECK / REPAIR WW COLORS");
+    }
   }
 
   async function publishSync() {
@@ -4109,6 +4246,30 @@
 
       if (!payload.readyToPublish) {
         throw new Error("No student records are ready to publish from the checked sections.");
+      }
+
+      // PRE-FLIGHT: validate every eligible WW before beginning ANY Firestore writes.
+      // Prevents a partly published term with new and old WW colors mixed.
+      const colorFailures = [];
+      for (const sectionPayload of payload.sections) {
+        if (!sectionPayload.readyToPublish) continue;
+        for (const row of (sectionPayload.students || [])) {
+          if (!G10DataService.normalizeStudentId(row.studentId)) continue;
+          const invalidWW = (row.tasks || []).map(studentFacingComplianceTask).filter(task =>
+            task.category === "ww" && !task.missing && task.percentageBand === "neutral"
+          );
+          if (invalidWW.length) colorFailures.push(
+            `${sectionPayload.section} / ${row.studentId}: ${invalidWW.length} uncolored WW`
+          );
+        }
+      }
+      if (colorFailures.length) {
+        throw new Error(
+          `Sync stopped BEFORE publishing: ${colorFailures.length} student record(s) have ` +
+          `completed Written Works without a usable score/HPS or color band. ` +
+          `Examples: ${colorFailures.slice(0, 3).join("; ")}. ` +
+          `Check the Sheet values and HPS. Nothing was written.`
+        );
       }
 
       const batchLimit = 380;
@@ -4151,6 +4312,16 @@
           // color band, but NEVER raw score, HPS, or exact percentage.
           // PT and Term Assessments retain their numeric score + HPS.
           const studentTasks = rawTasks.map(studentFacingComplianceTask);
+          const unresolvedWW = studentTasks.filter(task =>
+            task.category === "ww" && task.missing === false && task.percentageBand === "neutral"
+          );
+          if (unresolvedWW.length) {
+            throw new Error(
+              `Cannot publish WW colors for ${normalizedStudentId}: ` +
+              `${unresolvedWW.length} completed Written Work(s) have no numeric score/HPS or valid color band. ` +
+              `Check the Google Sheet cells and HPS, then sync again.`
+            );
+          }
 
           const studentRef = db.collection("studentCompliance")
             .doc(normalizedStudentId)
@@ -4191,7 +4362,7 @@
             ...commonSnapshot,
             tasks: studentTasks,
             source: "e-class-record",
-            complianceSchemaVersion: 6
+            complianceSchemaVersion: 7
           }, { merge: true });
 
           batch.set(adminRef, {

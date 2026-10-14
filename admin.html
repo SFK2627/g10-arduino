@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121316">
   <title>Admin • MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=27-ww-repair">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -21,10 +21,10 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js"></script>
-  <script defer src="data-service.js"></script>
-  <script defer src="admin.js"></script>
-  <script defer src="pwa.js"></script>
+  <script defer src="demo-data.js?v=27-ww-repair"></script>
+  <script defer src="data-service.js?v=27-ww-repair"></script>
+  <script defer src="admin.js?v=27-ww-repair"></script>
+  <script defer src="pwa.js?v=27-ww-repair"></script>
 </head>
 <body>
   <section id="adminLoginView" class="admin-login">
@@ -615,8 +615,12 @@
               <button id="publishSyncBtn" class="primary-btn" type="button">
                 SYNC CHECKED SECTIONS &amp; PUBLISH
               </button>
+              <button id="repairWWColorsBtn" class="secondary-btn" type="button">
+                CHECK / REPAIR WW COLORS
+              </button>
             </div>
-
+            <p class="ww-repair-help">If completed Written Works still appear gray, use Check / Repair WW Colors. It checks the admin-only scores for the selected sections and term, then repairs the student color bands without revealing WW scores.</p>
+            <div id="wwRepairStatus" class="admin-status" role="status"></div>
             <div id="syncStatus" class="admin-status"></div>
           </article>
 
