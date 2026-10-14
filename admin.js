@@ -460,6 +460,8 @@
 
     dialog.classList.remove("is-positive", "is-warning", "is-neutral");
     meta.textContent = `Student Preview • ${adminReminderTermName()}`;
+    $("#adminLoginReminderPreviewGradeTerm").textContent = `TERM ${Number($("#settingCurrentTerm").value || 1)}`;
+    $("#adminLoginReminderPreviewGradeNote").textContent = "Sample display • Actual grade and update date will appear for each student.";
 
     if (isMissing) {
       const sampleTasks = [
@@ -3160,8 +3162,12 @@
 
     body.innerHTML = `
       <div class="admin-term-grade-strip">
-        <span>${escapeHtml(adminTermGradeNote(snapshot))}</span>
-        <strong>${escapeHtml(adminTermGradeValue(snapshot))}</strong>
+        <div class="admin-term-grade-copy">
+          <span>RUNNING GRADE</span>
+          <small>${escapeHtml(adminRunningGradeNote(snapshot))}</small>
+          <small class="admin-running-grade-disclaimer">Not the final term grade. This running grade may increase or decrease before the term ends.</small>
+        </div>
+        <strong>${escapeHtml(adminRunningGradeValue(snapshot))}</strong>
       </div>
       <div class="admin-student-compliance-summary">
         <div>
@@ -3882,6 +3888,8 @@
       term,
       sheetName,
       taskNames,
+      // Exact local time this preview finished reading the selected Sheets.
+      previewedAt: new Date().toISOString(),
       sections: results,
       errors,
       readyToPublish: results.some(result => result.readyToPublish)
@@ -3930,7 +3938,7 @@
     }
   }
 
-  function adminTermGradeValue(snapshot) {
+  function adminRunningGradeValue(snapshot) {
     if (String(snapshot?.gradeStatus || "").toUpperCase() === "INC") return "INC";
     const value = snapshot?.termGrade;
     if (value === null || value === undefined || value === "") return "Not available";
@@ -3938,11 +3946,29 @@
     return Number.isFinite(number) ? String(Math.round(number * 100) / 100) : "Not available";
   }
 
-  function adminTermGradeNote(snapshot) {
-    if (snapshot?.gradeType === "recorded") return "Recorded Term Grade (AW)";
-    if (snapshot?.gradeType === "provisional") return "Provisional / Transmuted (AV)";
-    if (snapshot?.gradeType === "incomplete") return "Recorded status (AW)";
-    return "No grade in E-Class Record";
+  function adminRunningGradeAsOf(timestamp) {
+    if (!timestamp) return "As of latest update (date unavailable)";
+    let date;
+    if (typeof timestamp.toDate === "function") date = timestamp.toDate();
+    else if (typeof timestamp.seconds === "number") date = new Date(timestamp.seconds * 1000);
+    else date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return "As of latest update (date unavailable)";
+    return `As of ${date.toLocaleString("en-PH", {
+      timeZone: "Asia/Manila",
+      month: "long", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true
+    })} (PH time)`;
+  }
+
+  function adminRunningGradeNote(snapshot, asOfTime = null) {
+    const asOf = adminRunningGradeAsOf(asOfTime || snapshot?.publishedAt || snapshot?.lastUpdated);
+    if (String(snapshot?.gradeStatus || "").toUpperCase() === "INC" || snapshot?.gradeType === "incomplete") {
+      return `Incomplete standing • ${asOf}`;
+    }
+    if (snapshot?.termGrade === null || snapshot?.termGrade === undefined || snapshot?.termGrade === "") {
+      return "No running grade available yet";
+    }
+    return `${asOf}${snapshot?.gradeType === "provisional" ? " • Pending confirmation" : ""}`;
   }
 
   function renderSyncPreview(payload) {
@@ -3956,7 +3982,7 @@
 
     $("#syncPreviewNote").textContent =
       sections.length
-        ? `${sections.length} section(s) • ${totalStudents} student row(s) • ${payload.sheetName || `TERM_${payload.term}`}`
+        ? `${sections.length} section(s) • ${totalStudents} student row(s) • ${payload.sheetName || `TERM_${payload.term}`} • ${adminRunningGradeAsOf(payload.previewedAt)}`
         : "No section preview is available.";
 
     $("#syncActiveTasks").innerHTML = sections.length
@@ -4010,8 +4036,8 @@
               <td>${escapeHtml(student.studentId || "")}</td>
               <td>${escapeHtml(student.fullName || "")}</td>
               <td>
-                <strong>${escapeHtml(adminTermGradeValue(student))}</strong>
-                <small class="admin-grade-preview-note">${escapeHtml(adminTermGradeNote(student))}</small>
+                <strong>${escapeHtml(adminRunningGradeValue(student))}</strong>
+                <small class="admin-grade-preview-note">${escapeHtml(adminRunningGradeNote(student, payload.previewedAt))}</small>
               </td>
               <td>${escapeHtml(String((student.tasks || []).length))}</td>
               <td>${escapeHtml(String(student.missingCount || 0))}</td>

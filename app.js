@@ -96,6 +96,7 @@
       loaded.compliance = false;
       $("#currentTermText").textContent = `Term ${currentTerm}`;
       $("#complianceTerm").textContent = `Term ${currentTerm}`;
+      $("#complianceGradeTerm").textContent = `TERM ${currentTerm}`;
       await Promise.all([
         refreshDashboardMaterialCards(true),
         refreshDashboardRunningGrade(true)
@@ -342,7 +343,7 @@
       icon.textContent = "i";
       title.textContent = "Academic Update";
       statusTitle.textContent = "No requirements published for this term yet.";
-      message.textContent = "Your term grade will appear above once the teacher publishes the class record.";
+      message.textContent = "Your running grade will appear above after your teacher publishes an update.";
       missingSection.classList.add("hidden");
       list.innerHTML = "";
       return;
@@ -1139,36 +1140,50 @@
     }
   }
 
-  /** Display the grade published by the teacher, never recompute it in-browser. */
+  /** This is a display of the last published grade, not a live recalculation. */
+  function gradeAsOfLabel(record) {
+    const published = record?.publishedAt || record?.lastUpdated;
+    if (!published) return "As of the latest published update (date unavailable)";
+
+    let date;
+    if (typeof published.toDate === "function") date = published.toDate();
+    else if (typeof published.seconds === "number") date = new Date(published.seconds * 1000);
+    else date = new Date(published);
+
+    if (!Number.isFinite(date.getTime())) {
+      return "As of the latest published update (date unavailable)";
+    }
+    return `As of ${date.toLocaleString("en-PH", {
+      timeZone: "Asia/Manila",
+      month: "long", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true
+    })} (PH time)`;
+  }
+
   function studentGradeView(record) {
     const status = String(record?.gradeStatus || "").trim().toUpperCase();
     const type = String(record?.gradeType || "").trim().toLowerCase();
     const value = record?.termGrade;
+    const label = "RUNNING GRADE";
+    const asOf = gradeAsOfLabel(record);
 
-    if (status === "INC") {
-      return { label: "TERM GRADE • INCOMPLETE", value: "INC",
-        note: "Recorded as INC in your E-Class Record. Check your missing requirements." };
-    }
-    if (type === "incomplete") {
-      return { label: "TERM GRADE • STATUS", value: status || "—",
-        note: "Your teacher has recorded this status in the E-Class Record." };
+    if (status === "INC" || type === "incomplete") {
+      return { label, value: status || "INC",
+        note: `Incomplete standing • ${asOf}. Check your missing requirements.` };
     }
     if (value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))) {
       const number = Number(value);
       const text = String(Math.round(number * 100) / 100);
-      return type === "provisional"
-        ? { label: "PROVISIONAL RUNNING GRADE", value: text,
-            note: "Computed/transmuted grade (AV). Not yet a recorded term grade." }
-        : { label: "RECORDED TERM GRADE", value: text,
-            note: "Recorded term grade (AW), based on the published E-Class Record." };
+      return { label, value: text,
+        note: `${asOf}${type === "provisional" ? " • Pending confirmation" : ""}` };
     }
-    return { label: "RUNNING TERM GRADE", value: "—",
-      note: "Not yet available. Your teacher needs to publish an updated class record." };
+    return { label, value: "—",
+      note: "Not yet available. Your teacher needs to publish an updated grade." };
   }
 
   function showStudentGrade(record, prefix, loadError = null) {
     const grade = loadError
-      ? { label: "RUNNING TERM GRADE", value: "—", note: "Unable to load right now. Please refresh." }
+      ? { label: "RUNNING GRADE", value: "—", note: "Unable to load right now. Please refresh." }
       : studentGradeView(record);
     $(`#${prefix}Label`).textContent = grade.label;
     $(`#${prefix}Value`).textContent = grade.value;
@@ -1199,8 +1214,10 @@
       showStudentGrade(record, "dashboardGrade");
       $("#dashboardGradeTerm").textContent = `TERM ${currentTerm}`;
       $("#complianceTerm").textContent = `Term ${currentTerm}`;
-      $("#complianceUpdated").textContent = record.lastUpdated
-        ? formatDateTime(record.lastUpdated)
+      $("#complianceGradeTerm").textContent = `TERM ${currentTerm}`;
+      const lastPublished = record?.publishedAt || record?.lastUpdated;
+      $("#complianceUpdated").textContent = lastPublished
+        ? formatDateTime(lastPublished)
         : "Not yet published";
 
       const tasks = Array.isArray(record.tasks) ? record.tasks : [];
