@@ -71,9 +71,11 @@ window.G10_DEMO = {
     lastUpdated: "2026-08-14T20:35:00+08:00",
     tasks: [
       { taskId: "ww1", category: "ww", categoryLabel: "Written Work",
-        displayName: "Arduino Concepts Quiz", status: "Completed", missing: false },
+        displayName: "Arduino Concepts Quiz", status: "Completed", missing: false,
+        percentageBand: "orange" },
       { taskId: "ww2", category: "ww", categoryLabel: "Written Work",
-        displayName: "Circuit Diagram Exercise", status: "Missing", missing: true },
+        displayName: "Circuit Diagram Exercise", status: "Missing", missing: true,
+        percentageBand: "black" },
       { taskId: "pt1", category: "pt", categoryLabel: "Performance Task",
         displayName: "Mini PETA - Emergency Lights", status: "Completed", missing: false,
         score: 18, maxScore: 20, scorePercent: 90, percentageBand: "lime" },

@@ -4049,27 +4049,43 @@
   }
 
   /**
-   * Privacy boundary: a student receives no Written Work scores, HPS,
-   * percentages, grade bands, or unknown future private fields.
-   * An allowlist is safer than simply deleting the currently known fields.
+   * Student Written Works disclose only completion status and a broad
+   * color category. Raw score, HPS, exact percentage, and all other
+   * private admin fields remain in adminCompliance only.
+   *
+   * The color band is calculated from the admin's authoritative Sheet
+   * preview BEFORE the allowlisted student snapshot is written.
    */
   function studentFacingComplianceTask(task) {
     const category = String(task?.category || "").toLowerCase();
     const taskId = String(task?.taskId || "").toLowerCase();
     const isWrittenWork = category === "ww" || /^ww\d+$/.test(taskId);
 
-    if (!isWrittenWork) return { ...task };  // PT / TA: actual scores allowed
+    if (!isWrittenWork) return { ...task }; // PT / TA: actual scores allowed
+
+    const missing = task?.missing === true;
+    const allowedBands = ["red", "orange", "yellow", "lime", "green"];
+    const rawPercent = task?.scorePercent;
+    const hasPercent = rawPercent !== null && rawPercent !== undefined &&
+      rawPercent !== "" && Number.isFinite(Number(rawPercent));
+    const sourceBand = String(task?.percentageBand || "").toLowerCase();
+    const colorBand = missing
+      ? "black"
+      : hasPercent
+        ? adminComplianceBandFromPercent(Number(rawPercent))
+        : (allowedBands.includes(sourceBand) ? sourceBand : "neutral");
 
     return {
-      schemaVersion: task.schemaVersion || 4,
+      schemaVersion: 5,
       taskId: task.taskId || "",
       displayName: task.displayName || "Written Work",
       category: "ww",
       categoryLabel: task.categoryLabel || "Written Work",
       taskNumber: Number(task.taskNumber) || 0,
-      status: task.missing === true ? "Missing" : "Completed",
-      missing: task.missing === true,
-      completed: task.missing !== true
+      status: missing ? "Missing" : "Completed",
+      missing: missing,
+      completed: !missing,
+      percentageBand: colorBand // Broad range only; never publish WW numbers
     };
   }
 
@@ -4131,9 +4147,9 @@
           const missingCount = rawTasks.filter(task => task && task.missing === true).length;
           const completeCount = Math.max(0, rawTasks.length - missingCount);
 
-          // Student-facing snapshot: Written Works are strictly completion only.
-          // PT and TA keep their raw score, HPS and percentage/color band.
-          // Do not publish WW scores, HPS, percentages or any derived grade band.
+          // Student-facing snapshot: Written Works have status plus a broad
+          // color band, but NEVER raw score, HPS, or exact percentage.
+          // PT and Term Assessments retain their numeric score + HPS.
           const studentTasks = rawTasks.map(studentFacingComplianceTask);
 
           const studentRef = db.collection("studentCompliance")
@@ -4175,7 +4191,7 @@
             ...commonSnapshot,
             tasks: studentTasks,
             source: "e-class-record",
-            complianceSchemaVersion: 5
+            complianceSchemaVersion: 6
           }, { merge: true });
 
           batch.set(adminRef, {

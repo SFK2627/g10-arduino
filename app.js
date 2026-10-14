@@ -1268,24 +1268,28 @@
 
       target.innerHTML = tasks.map(task => {
         const missing = isMissingTask(task);
-        const percent = Number(task?.scorePercent);
+        const rawPercent = task?.scorePercent;
+        const hasPercent = rawPercent !== null && rawPercent !== undefined &&
+          rawPercent !== "" && Number.isFinite(Number(rawPercent));
 
-        // scorePercent is the source of truth for completed-task colors.
-        // percentageBand remains only as a backward-compatible fallback.
         const taskId = String(task?.taskId || "").toLowerCase();
         const category = String(task?.category || "").toLowerCase();
         const categoryLabel = String(task?.categoryLabel || "").toLowerCase();
         const isWrittenWork = category === "ww" || /^ww\d+$/.test(taskId);
+        const allowedBands = ["red", "orange", "yellow", "lime", "green"];
+        const publishedBand = String(task?.percentageBand || "").toLowerCase();
 
-        // Never use WW score percentages or color bands, including on old
-        // snapshots published before the privacy-safe schema was added.
-        const band = isWrittenWork
-          ? (missing ? "black" : "neutral")
-          : missing
-            ? "black"
-            : (Number.isFinite(percent)
-                ? complianceBandFromPercent(percent)
-                : String(task.percentageBand || "neutral").toLowerCase());
+        // WW: only use the teacher-published color category; never read or
+        // display WW raw scores, HPS, or exact percentages in the student UI.
+        // PT/TA: prefer numeric percentage, falling back to published band.
+        // Old WW records without a band stay gray until the next Sync & Publish.
+        const band = missing
+          ? "black"
+          : isWrittenWork
+            ? (allowedBands.includes(publishedBand) ? publishedBand : "neutral")
+            : hasPercent
+              ? complianceBandFromPercent(Number(rawPercent))
+              : (allowedBands.includes(publishedBand) ? publishedBand : "neutral");
 
         const status = missing ? "Missing" : "Completed";
 
