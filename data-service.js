@@ -748,6 +748,28 @@
     return { firebaseApp, auth, db, demoMode };
   }
 
+
+  // A student may read only the document whose id equals their Firebase Auth UID.
+  // Firestore rules, not the UI or a user-supplied UID, enforce this boundary.
+  async function getOwnTinkercadAccess() {
+    await init();
+    if (demoMode) return null;
+    if (!auth?.currentUser || !db) throw new Error("Please sign in again.");
+
+    const uid = auth.currentUser.uid;
+    const snapshot = await db.collection("tinkercadAccess").doc(uid).get();
+    if (auth.currentUser?.uid !== uid) throw new Error("Student account changed. Please retry.");
+    if (!snapshot.exists) return null;
+    const record = snapshot.data() || {};
+    if (record.enabled !== true) return null;
+    return {
+      classCode: String(record.classCode || ""),
+      loginCode: String(record.loginCode || ""),
+      classLink: String(record.classLink || ""),
+      updatedAt: record.updatedAt || null
+    };
+  }
+
   window.G10DataService = {
     init,
     isDemo: () => demoMode,
@@ -765,6 +787,7 @@
     getAnnouncementHeartStates,
     toggleAnnouncementHeart,
     getCompliance,
+    getOwnTinkercadAccess,
     clearPageCache,
     clearAllCache,
     changeStudentPassword,

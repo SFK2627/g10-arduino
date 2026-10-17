@@ -10,6 +10,8 @@
   let bulkStudentRows = [];
   let knownSections = [];
   let cachedStudentProfiles = [];
+  let tinkercadAssignments = new Map();
+  let tinkercadLoadingSerial = 0;
 
   let complianceSettingsCache = null;
   let activeComplianceTaskGroup = "ww";
@@ -152,6 +154,18 @@
     $("#studentSectionFilter").addEventListener("change", renderStudentProfiles);
     $("#studentSearchInput").addEventListener("input", renderStudentProfiles);
 
+    $("#tinkercadAssignmentForm").addEventListener("submit", saveTinkercadAssignment);
+    $("#tcAdminStudent").addEventListener("change", showTinkercadSelectedStudent);
+    $("#tcAdminClearBtn").addEventListener("click", clearTinkercadForm);
+    $("#tcAdminRemoveBtn").addEventListener("click", removeTinkercadAssignment);
+    $("#tcAdminSearch").addEventListener("input", renderTinkercadRoster);
+    $("#tcAdminSection").addEventListener("change", renderTinkercadRoster);
+    $("#tcAdminRefreshBtn").addEventListener("click", loadTinkercadManager);
+    $("#tcAdminRoster").addEventListener("click", event => {
+      const row = event.target.closest("[data-tc-student-uid]");
+      if (row) selectTinkercadStudent(row.dataset.tcStudentUid);
+    });
+
     $$("[data-close-student-password-reset]").forEach(el => {
       el.addEventListener("click", closeStudentPasswordResetModal);
     });
@@ -233,6 +247,7 @@
     if (page === "lessons") await loadAdminLessons();
     if (page === "activities") await loadAdminActivities();
     if (page === "students") await loadStudents();
+    if (page === "tinkercad") await loadTinkercadManager();
     if (page === "sync") await loadComplianceSetup();
   }
 
@@ -2568,6 +2583,151 @@
   }
 
 
+
+  // Tinkercad Classroom Class Seats are created in the teacher's Autodesk
+  // account first. Only the corresponding issued codes are mapped here.
+  async function loadTinkercadManager() {
+    const serial = ++tinkercadLoadingSerial;
+    const roster = $("#tcAdminRoster");
+    roster.textContent = "Loading student access…";
+    try {
+      if (!cachedStudentProfiles.length) await loadStudents();
+      const snapshot = await db.collection("tinkercadAccess").get();
+      if (serial !== tinkercadLoadingSerial) return;
+      tinkercadAssignments = new Map(snapshot.docs.map(doc => [doc.id, doc.data() || {}]));
+      fillTinkercadStudentOptions();
+      renderTinkercadRoster();
+    } catch (err) {
+      roster.textContent = err.message || "Could not load Tinkercad access.";
+      setStatus("#tinkercadAdminStatus", err.message || "Check Firestore rules and try again.", false);
+    }
+  }
+
+  function fillTinkercadStudentOptions() {
+    const studentSelect = $("#tcAdminStudent");
+    const current = studentSelect.value;
+    studentSelect.innerHTML = '<option value="">Select a student</option>' +
+      cachedStudentProfiles.map(s => `<option value="${escapeHtml(s.uid)}">${escapeHtml(s.fullName || s.studentId)} • ${escapeHtml(s.section || "")}</option>`).join("");
+    if (cachedStudentProfiles.some(s => s.uid === current)) studentSelect.value = current;
+    const sectionSelect = $("#tcAdminSection");
+    const previous = sectionSelect.value;
+    const sections = [...new Set(cachedStudentProfiles.map(s => normalizeSectionName(s.section)).filter(Boolean))].sort();
+    sectionSelect.innerHTML = '<option value="*">All Sections</option>' +
+      sections.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+    if (sections.includes(previous)) sectionSelect.value = previous;
+    showTinkercadSelectedStudent();
+  }
+
+  function selectTinkercadStudent(uid) {
+    if (!cachedStudentProfiles.some(s => s.uid === uid)) return;
+    $("#tcAdminStudent").value = uid;
+    showTinkercadSelectedStudent();
+    $("#tcAdminStudent").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function showTinkercadSelectedStudent() {
+    const uid = $("#tcAdminStudent").value;
+    const student = cachedStudentProfiles.find(s => s.uid === uid);
+    const saved = tinkercadAssignments.get(uid);
+    $("#tcSelectedStudent").textContent = student
+      ? `${student.fullName || student.studentId} • ${student.studentId || ""} • ${student.section || ""}`
+      : "No student selected.";
+    $("#tcAdminClassCode").value = saved?.classCode || "";
+    $("#tcAdminLoginCode").value = saved?.loginCode || "";
+    $("#tcAdminClassLink").value = saved?.classLink || "";
+    $("#tcAdminEnabled").checked = saved ? saved.enabled === true : true;
+    $("#tcAdminRemoveBtn").disabled = !uid || !saved;
+    setStatus("#tinkercadAdminStatus", "");
+  }
+
+  function clearTinkercadForm() {
+    $("#tcAdminStudent").value = "";
+    showTinkercadSelectedStudent();
+  }
+
+  function validTinkercadLink(value) {
+    if (!value) return "";
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol === "https:" && ["www.tinkercad.com", "tinkercad.com"].includes(parsed.hostname)) return parsed.href;
+    } catch (_) {}
+    throw new Error("Class Link must be an official https://www.tinkercad.com/ URL, or leave it blank.");
+  }
+
+  async function saveTinkercadAssignment(event) {
+    event.preventDefault();
+    const uid = $("#tcAdminStudent").value;
+    if (!cachedStudentProfiles.some(s => s.uid === uid)) return setStatus("#tinkercadAdminStatus", "Select a student first.", false);
+    const classCode = $("#tcAdminClassCode").value.trim();
+    const loginCode = $("#tcAdminLoginCode").value.trim();
+    const btn = $("#tcAdminSaveBtn");
+    if (!classCode || !loginCode) return setStatus("#tinkercadAdminStatus", "Enter both Tinkercad-issued codes.", false);
+    if (classCode.length > 80 || loginCode.length > 120) return setStatus("#tinkercadAdminStatus", "Code is too long.", false);
+    const duplicate = [...tinkercadAssignments.entries()].find(([otherUid, item]) =>
+      otherUid !== uid && String(item.classCode || "").toLowerCase() === classCode.toLowerCase() &&
+      String(item.loginCode || "").toLowerCase() === loginCode.toLowerCase());
+    if (duplicate) return setStatus("#tinkercadAdminStatus", "This Class Code + Login Code is already assigned to another student. Verify your Tinkercad Class Seat roster.", false);
+    try {
+      const classLink = validTinkercadLink($("#tcAdminClassLink").value.trim());
+      setBusy(btn, true, "SAVING…");
+      const enabled = $("#tcAdminEnabled").checked;
+      const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection("tinkercadAccess").doc(uid).set({
+        classCode, loginCode, classLink, enabled,
+        updatedAt: serverTimestamp,
+        updatedBy: admin.uid || ""
+      }, { merge: true });
+      tinkercadAssignments.set(uid, { classCode, loginCode, classLink, enabled });
+      renderTinkercadRoster();
+      showTinkercadSelectedStudent();
+      setStatus("#tinkercadAdminStatus", "Student Tinkercad access saved. Only this student (and admins) can read their assigned document.", true);
+    } catch (err) {
+      setStatus("#tinkercadAdminStatus", err.message || "Could not save Tinkercad access.", false);
+    } finally {
+      setBusy(btn, false, "SAVE ASSIGNMENT");
+    }
+  }
+
+  async function removeTinkercadAssignment() {
+    const uid = $("#tcAdminStudent").value;
+    const student = cachedStudentProfiles.find(s => s.uid === uid);
+    if (!student || !tinkercadAssignments.has(uid)) return;
+    if (!confirm(`Remove the Arduino Hub Tinkercad assignment for ${student.fullName || student.studentId}? This does NOT delete the actual seat or projects in Tinkercad.`)) return;
+    const btn = $("#tcAdminRemoveBtn");
+    setBusy(btn, true, "REMOVING…");
+    try {
+      await db.collection("tinkercadAccess").doc(uid).delete();
+      tinkercadAssignments.delete(uid);
+      renderTinkercadRoster();
+      showTinkercadSelectedStudent();
+      setStatus("#tinkercadAdminStatus", "Assignment removed from the portal only. Tinkercad projects were not affected.", true);
+    } catch (err) {
+      setStatus("#tinkercadAdminStatus", err.message || "Could not remove assignment.", false);
+    } finally {
+      btn.textContent = "Remove Assignment";
+      btn.disabled = !tinkercadAssignments.has(uid);
+    }
+  }
+
+  function renderTinkercadRoster() {
+    const search = $("#tcAdminSearch").value.trim().toLowerCase();
+    const section = $("#tcAdminSection").value;
+    const rows = cachedStudentProfiles.filter(s =>
+      (section === "*" || normalizeSectionName(s.section) === section) &&
+      (!search || [s.fullName, s.studentId, s.section].join(" ").toLowerCase().includes(search))
+    );
+    const assignedCount = cachedStudentProfiles.filter(s => tinkercadAssignments.get(s.uid)?.enabled === true).length;
+    $("#tcAdminStats").textContent = `${assignedCount} active assignment${assignedCount === 1 ? "" : "s"} • ${cachedStudentProfiles.length} student${cachedStudentProfiles.length === 1 ? "" : "s"}`;
+    $("#tcAdminRoster").innerHTML = rows.length ? rows.map(s => {
+      const item = tinkercadAssignments.get(s.uid);
+      const label = item ? (item.enabled === true ? "Assigned" : "Disabled") : "Not assigned";
+      return `<button class="tc-roster-row" type="button" data-tc-student-uid="${escapeHtml(s.uid)}">
+        <span><strong>${escapeHtml(s.fullName || s.studentId)}</strong><small>${escapeHtml(s.section || "Grade 10")} • ${escapeHtml(s.studentId || "")}</small></span>
+        <span class="tc-roster-state ${item?.enabled === true ? "is-ready" : ""}">${label}</span>
+      </button>`;
+    }).join("") : '<div class="tc-student-placeholder">No students match this filter.</div>';
+  }
+
   async function loadStudents() {
     const target = $("#adminStudentsList");
     target.textContent = "Loading…";
@@ -2653,6 +2813,7 @@
 
         <div class="inline-actions student-profile-actions">
           <button class="mini-btn student-view-compliance" type="button" data-student-profile-uid="${s.uid}">View Scores</button>
+          <button class="mini-btn" type="button" data-assign-tinkercad-uid="${s.uid}">Tinkercad</button>
           <button
             class="mini-btn student-reset-password"
             type="button"
@@ -2672,6 +2833,13 @@
     $$("[data-student-profile-uid]").forEach(btn => {
       btn.addEventListener("click", () => {
         openStudentComplianceProfile(btn.dataset.studentProfileUid, null, "students");
+      });
+    });
+
+    $$(`[data-assign-tinkercad-uid]`).forEach(btn => {
+      btn.addEventListener("click", async () => {
+        await openAdminPage("tinkercad");
+        selectTinkercadStudent(btn.dataset.assignTinkercadUid);
       });
     });
 

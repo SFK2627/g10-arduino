@@ -7779,3 +7779,48 @@ button {
 .student-login-preparing-inner p { margin: 0; color: #6c717a; font-size: .83rem; }
 @keyframes student-login-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .student-login-preparing-spinner { animation-duration: 2s; } }
+
+
+/* Tinkercad Class Seat Manager — student and admin */
+.tc-page-heading, .tc-student-heading {display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px;}
+.tc-page-heading h3,.tc-student-heading h3{margin:2px 0 5px;font-size:clamp(1.18rem,2vw,1.55rem)}
+.tc-page-heading p,.tc-student-heading p{margin:0;line-height:1.5;color:#6a707a;max-width:720px;font-size:.88rem}
+.tc-official-link{text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center}
+.tc-admin-layout{display:grid;grid-template-columns:minmax(280px,.95fr) minmax(310px,1.15fr);gap:18px;align-items:start}
+.tc-admin-layout .panel{min-width:0}
+.tc-selected-student{padding:10px 12px;border-radius:10px;background:#f5f6f8;color:#545d68;font-size:.8rem;line-height:1.5}
+.tc-admin-note{color:#616b76;font-size:.77rem;line-height:1.55;margin:14px 0 0}
+.tc-danger-button{color:#a3262e!important}
+.tc-roster-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.tc-roster-top h3{margin-bottom:4px}.tc-roster-top p{margin:0;font-size:.78rem;color:#6d737d}
+.tc-roster-filters{display:grid;grid-template-columns:1fr minmax(130px,.5fr);gap:9px;margin:14px 0}
+.tc-roster-filters input,.tc-roster-filters select{min-width:0;width:100%;padding:10px;border:1px solid #d7dbe3;border-radius:9px;background:#fff;font:inherit;font-size:.86rem}
+.tc-roster-list{max-height:580px;overflow:auto;display:flex;flex-direction:column;gap:7px}
+.tc-roster-row{appearance:none;background:#fff;border:1px solid #e1e4e9;border-radius:10px;padding:11px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;width:100%;cursor:pointer}
+.tc-roster-row:hover,.tc-roster-row:focus-visible{border-color:#ad2333;background:#fff8f8;outline-offset:2px}
+.tc-roster-row strong,.tc-roster-row small{display:block;word-break:break-word}.tc-roster-row strong{font-size:.86rem;color:#20242b}.tc-roster-row small{margin-top:3px;font-size:.74rem;color:#707680}
+.tc-roster-state{white-space:nowrap;border-radius:15px;padding:5px 9px;font-weight:750;font-size:.71rem;background:#f1f2f4;color:#68717d}
+.tc-roster-state.is-ready{background:#e3f5e9;color:#176438}
+.tc-student-access{max-width:940px;margin:0 auto 25px}
+.tc-student-placeholder{background:#fff;border:1px dashed #c8cdd4;border-radius:14px;padding:23px;color:#69717c;font-size:.9rem;text-align:center}
+.tc-student-card{background:#fff;border:1px solid #e4e5e9;border-radius:18px;padding:clamp(18px,3vw,30px);box-shadow:0 12px 35px rgba(23,29,38,.06)}
+.tc-student-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:19px}
+.tc-student-card-head h3{margin:5px 0 0;font-size:clamp(1.1rem,2.5vw,1.45rem);overflow-wrap:anywhere}
+.tc-status-ready{border-radius:20px;padding:6px 11px;font-size:.72rem;font-weight:850;background:#e4f6e9;color:#156536}
+.tc-credential-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tc-credential{display:flex;flex-direction:column;align-items:flex-start;gap:12px;border:1px solid #e0e4e9;border-radius:13px;padding:18px;min-width:0;background:#fafbfc}
+.tc-credential small{font-size:.71rem;font-weight:850;color:#646a75;letter-spacing:.055em}
+.tc-credential strong{font-size:clamp(1.15rem,2.6vw,1.65rem);line-height:1.3;letter-spacing:.025em;word-break:break-all}
+.tc-credential-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}
+.tc-student-feedback{font-size:.78rem;color:#176438;min-height:1em;margin:12px 0}
+.tc-launch-button{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;max-width:100%;min-height:44px}
+.tc-student-help{background:#f5f6f9;border-radius:11px;padding:13px 15px;font-size:.85rem;line-height:1.65;margin-top:20px;color:#35404b}
+.tc-student-privacy{font-size:.76rem;color:#66707c;line-height:1.5;margin-top:13px}
+@media(max-width:920px){.tc-admin-layout{grid-template-columns:1fr}.tc-roster-list{max-height:480px}}
+@media(max-width:620px){.tc-page-heading,.tc-student-heading{align-items:stretch;flex-direction:column}.tc-credential-grid{grid-template-columns:1fr}.tc-roster-filters{grid-template-columns:1fr}.tc-student-card-head{align-items:flex-start}.tc-roster-row{align-items:flex-start}.tc-roster-state{flex-shrink:0}.mobile-nav{overflow-x:auto;justify-content:flex-start;scrollbar-width:thin}.mobile-nav-btn{min-width:64px;flex:1 0 auto;padding-left:6px;padding-right:6px;font-size:.69rem}}
+/* Six compact bottom-navigation destinations, with horizontal scrolling
+   on narrow phones instead of a hidden second row. */
+@media (max-width: 620px) {
+  .mobile-nav {grid-template-columns: repeat(6, minmax(64px, 1fr)); overflow-x: auto; overflow-y: hidden;}
+  .mobile-nav-btn {min-width: 64px; white-space: nowrap;}
+}

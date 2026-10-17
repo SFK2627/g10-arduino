@@ -1,4 +1,4 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v28-student-nav-login-first";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v29-tinkercad-manager";
 
 const CORE_ASSETS = [
   "./",

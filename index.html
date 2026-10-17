@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#b20f1b">
   <title>MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css?v=28-student-nav-login-first">
+  <link rel="stylesheet" href="styles.css?v=29-tinkercad-manager">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -22,10 +22,10 @@
   <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js?v=28-student-nav-login-first"></script>
-  <script defer src="data-service.js?v=28-student-nav-login-first"></script>
-  <script defer src="app.js?v=28-student-nav-login-first"></script>
-  <script defer src="pwa.js?v=28-student-nav-login-first"></script>
+  <script defer src="demo-data.js?v=29-tinkercad-manager"></script>
+  <script defer src="data-service.js?v=29-tinkercad-manager"></script>
+  <script defer src="app.js?v=29-tinkercad-manager"></script>
+  <script defer src="pwa.js?v=29-tinkercad-manager"></script>
 </head>
 <body>
   <noscript>
@@ -117,6 +117,7 @@
         <button class="nav-btn" data-page="lessons"><span>03</span> Lessons</button>
         <button class="nav-btn" data-page="activities"><span>04</span> Activities</button>
         <button class="nav-btn" data-page="compliance"><span>05</span> Compliance</button>
+        <button class="nav-btn" data-page="tinkercad"><span>06</span> Tinkercad Access</button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -240,6 +241,11 @@
             <strong>Compliance</strong>
             <small>Check your status</small>
           </button>
+          <button class="quick-card goto-page" data-page="tinkercad">
+            <span class="quick-no">05</span>
+            <strong>Tinkercad Access</strong>
+            <small>Get your personal class login codes</small>
+          </button>
         </div>
       </section>
 
@@ -262,6 +268,20 @@
           <button class="refresh-btn" data-refresh="activities">Refresh</button>
         </div>
         <div id="activitiesList" class="content-grid"></div>
+      </section>
+
+      <section id="page-tinkercad" class="page">
+        <div class="tc-student-heading">
+          <div>
+            <p class="section-kicker">YOUR PERSONAL CLASS SEAT</p>
+            <h3>My Tinkercad Access</h3>
+            <p>Use your assigned Class Code and personal Login Code to sign in to Tinkercad without an email verification code.</p>
+          </div>
+          <button id="tcStudentRefreshBtn" class="refresh-btn" type="button">Refresh</button>
+        </div>
+        <div id="tcStudentAccess" class="tc-student-access" aria-live="polite">
+          <div class="tc-student-placeholder">Open this page to load your access details.</div>
+        </div>
       </section>
 
       <section id="page-compliance" class="page">
@@ -346,6 +366,7 @@
       <button class="mobile-nav-btn" data-page="lessons">Lessons</button>
       <button class="mobile-nav-btn" data-page="activities">Tasks</button>
       <button class="mobile-nav-btn" data-page="compliance">Status</button>
+      <button class="mobile-nav-btn" data-page="tinkercad">Tinkercad</button>
     </nav>
   </div>
 

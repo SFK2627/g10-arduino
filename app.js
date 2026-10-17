@@ -15,6 +15,7 @@
   let currentAnnouncementRows = [];
 
   let loginReminderRequested = false;
+  let tinkercadLoadSerial = 0;
 
   const DEFAULT_LOGIN_REMINDER_POSITIVE =
     "Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.";
@@ -116,6 +117,9 @@
     $$("[data-close-viewer]").forEach(el => {
       el.addEventListener("click", closeViewer);
     });
+
+    $("#tcStudentRefreshBtn").addEventListener("click", () => loadTinkercadAccess(true));
+    $("#tcStudentAccess").addEventListener("click", handleTinkercadAction);
 
     $("#openComplianceLegendBtn").addEventListener("click", openComplianceLegend);
 
@@ -995,7 +999,8 @@
       announcements: ["Class Updates", "Announcements"],
       lessons: ["ICT 10", "Lessons"],
       activities: ["ICT 10", "Activities"],
-      compliance: ["ICT 10", "Compliance"]
+      compliance: ["ICT 10", "Compliance"],
+      tinkercad: ["ICT 10", "Tinkercad Access"]
     };
 
     $("#pageEyebrow").textContent = titles[page][0];
@@ -1018,6 +1023,84 @@
     if (currentPage === "lessons" && (!loaded.lessons || force)) await loadLessons();
     if (currentPage === "activities" && (!loaded.activities || force)) await loadActivities();
     if (currentPage === "compliance" && (!loaded.compliance || force)) await loadCompliance();
+    if (currentPage === "tinkercad") await loadTinkercadAccess(force);
+  }
+
+
+  async function loadTinkercadAccess(force = false) {
+    const target = $("#tcStudentAccess");
+    if (!profile) return;
+    // Tinkercad codes can be changed/revoked by the teacher: always read the
+    // current record when the student opens or refreshes the page.
+    const serial = ++tinkercadLoadSerial;
+    target.innerHTML = '<div class="tc-student-placeholder">Loading your private Tinkercad access…</div>';
+    try {
+      const access = await G10DataService.getOwnTinkercadAccess();
+      if (serial !== tinkercadLoadSerial || !profile) return;
+      if (!access?.classCode || !access?.loginCode) {
+        target.innerHTML = emptyState("No Tinkercad access assigned yet", "Your teacher will assign a Class Code and individual Login Code here after creating your Class Seat in Tinkercad.");
+        return;
+      }
+      const tinkercadLink = safeTinkercadClassLink(access.classLink);
+      target.innerHTML = `
+        <article class="tc-student-card">
+          <div class="tc-student-card-head">
+            <div><span class="card-kicker">PERSONAL TINKERCAD CLASS SEAT</span><h3>${escapeHtml(profile.fullName || "Student")}</h3></div>
+            <span class="tc-status-ready">Assigned</span>
+          </div>
+          <div class="tc-credential-grid">
+            <div class="tc-credential"><small>CLASS CODE</small><strong>${escapeHtml(access.classCode)}</strong><button class="mini-btn" type="button" data-tc-copy="class">Copy Class Code</button></div>
+            <div class="tc-credential"><small>YOUR PERSONAL LOGIN CODE</small><strong id="tcStudentLoginValue" data-code="${escapeAttr(access.loginCode)}">••••••••</strong><div class="tc-credential-actions"><button class="mini-btn" type="button" data-tc-reveal>Show</button><button class="mini-btn" type="button" data-tc-copy="login">Copy Code</button></div></div>
+          </div>
+          <p id="tcStudentActionStatus" class="tc-student-feedback" role="status"></p>
+          <a class="primary-btn tc-launch-button" href="${escapeAttr(tinkercadLink)}" target="_blank" rel="noopener noreferrer">Open Tinkercad ↗</a>
+          <div class="tc-student-help"><strong>How to log in:</strong> Open Tinkercad, choose the option to join your teacher's class, enter the Class Code, then use your personal Login Code / nickname. Your circuits stay with your Tinkercad Class Seat.</div>
+          <p class="tc-student-privacy">Keep your personal Login Code private. Sign out of both Tinkercad and Arduino Hub on shared computers.</p>
+        </article>`;
+    } catch (err) {
+      if (serial !== tinkercadLoadSerial) return;
+      const message = String(err?.code || "").includes("permission-denied")
+        ? "Tinkercad access is not enabled in Firestore Rules yet. Please contact your teacher."
+        : (err?.message || "Unable to load your account access.");
+      target.innerHTML = errorState(new Error(message));
+    }
+  }
+
+  function safeTinkercadClassLink(value) {
+    try {
+      const url = new URL(String(value || ""));
+      if (url.protocol === "https:" && (url.hostname === "tinkercad.com" || url.hostname === "www.tinkercad.com")) return url.href;
+    } catch (_) {}
+    return "https://www.tinkercad.com/";
+  }
+
+  async function handleTinkercadAction(event) {
+    const copy = event.target.closest("[data-tc-copy]");
+    const reveal = event.target.closest("[data-tc-reveal]");
+    const codeNode = $("#tcStudentLoginValue");
+    if (reveal && codeNode) {
+      const visible = reveal.textContent === "Hide";
+      codeNode.textContent = visible ? "••••••••" : codeNode.dataset.code;
+      reveal.textContent = visible ? "Show" : "Hide";
+      return;
+    }
+    if (!copy) return;
+    const code = copy.dataset.tcCopy === "login"
+      ? codeNode?.dataset.code
+      : $(".tc-credential strong")?.textContent;
+    const status = $("#tcStudentActionStatus");
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      status.textContent = "Code copied. Paste it into the Tinkercad sign-in page.";
+    } catch (_) {
+      status.textContent = "Could not copy automatically. Select and copy the code manually.";
+      if (codeNode && copy.dataset.tcCopy === "login") {
+        codeNode.textContent = code;
+        const button = $("[data-tc-reveal]");
+        if (button) button.textContent = "Hide";
+      }
+    }
   }
 
   async function loadLessons() {
@@ -1489,6 +1572,8 @@
 
   async function logout() {
     loginReminderRequested = false;
+    ++tinkercadLoadSerial;
+    $("#tcStudentAccess").textContent = "";
     $("#studentLoginPreparing").classList.add("hidden");
 
     if (!$("#studentLoginReminderModal").classList.contains("hidden")) {
