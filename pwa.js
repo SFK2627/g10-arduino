@@ -116,7 +116,7 @@
     if (!/^https?:$/.test(location.protocol)) return;
 
     try {
-      await navigator.serviceWorker.register("./service-worker.js?v=31-tinkercad-project-monitor", {
+      await navigator.serviceWorker.register("./service-worker.js?v=32-bulk-reminder-music", {
         scope: "./"
       });
     } catch (error) {

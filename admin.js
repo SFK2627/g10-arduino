@@ -9,6 +9,9 @@
   let previewPayload = null;
   let bulkStudentRows = [];
   let knownSections = [];
+  let loginReminderMusicPlaylist = [];
+  let adminReminderPreviewTracks = [];
+  let adminReminderPreviewTrackIndex = -1;
   let cachedStudentProfiles = [];
   let tinkercadClassConfig = null;
   let tinkercadLoadingSerial = 0;
@@ -86,6 +89,17 @@
 
     $("#settingsForm").addEventListener("submit", saveSettings);
     $("#settingLoginReminderMusicEnabled").addEventListener("change", updateLoginReminderAdminControls);
+    $("#settingLoginReminderBulkMusic").addEventListener("input", updateMusicBulkDetection);
+    $("#loginReminderAddSingleMusicBtn").addEventListener("click", addSingleMusicLink);
+    $("#loginReminderAddBulkMusicBtn").addEventListener("click", addBulkMusicLinks);
+    $("#loginReminderMusicList").addEventListener("click", event => {
+      const removeBtn = event.target.closest("[data-remove-music-index]");
+      if (!removeBtn) return;
+      const index = Number(removeBtn.dataset.removeMusicIndex);
+      if (!Number.isInteger(index) || index < 0 || index >= loginReminderMusicPlaylist.length) return;
+      loginReminderMusicPlaylist.splice(index, 1);
+      renderMusicPlaylist();
+    });
     $("#previewLoginReminderBtn").addEventListener("click", previewLoginReminderModal);
     $("#adminLoginReminderPreviewPlayMusicBtn").addEventListener("click", playAdminReminderPreviewMusic);
 
@@ -440,8 +454,15 @@
     $("#settingLoginReminderMusicEnabled").checked =
       data.loginReminderMusicEnabled === true;
 
-    $("#settingLoginReminderMusicUrl").value =
-      String(data.loginReminderMusicUrl || "");
+    // Keep backwards compatibility with the original single-song setting.
+    loginReminderMusicPlaylist = G10MusicPlaylist.normalize(
+      Array.isArray(data.loginReminderMusicUrls) && data.loginReminderMusicUrls.length
+        ? data.loginReminderMusicUrls : [data.loginReminderMusicUrl || ""]
+    );
+    $("#settingLoginReminderMusicUrl").value = "";
+    $("#settingLoginReminderBulkMusic").value = "";
+    renderMusicPlaylist();
+    updateMusicBulkDetection();
 
     $("#settingLoginReminderPositiveMessage").value =
       String(data.loginReminderPositiveMessage || DEFAULT_LOGIN_REMINDER_POSITIVE);
@@ -457,13 +478,30 @@
     setStatus("#settingsStatus", "Saving…");
 
     try {
+      // Also process links still in either paste field if Save is clicked first.
+      const draftSingle = $("#settingLoginReminderMusicUrl").value.trim();
+      const draftBulk = $("#settingLoginReminderBulkMusic").value;
+      if (draftSingle && !G10MusicPlaylist.validUrl(draftSingle)) {
+        throw new Error("The single music URL is invalid. Please enter a direct http(s) link.");
+      }
+      const parsedBulk = G10MusicPlaylist.extract(draftBulk);
+      if (draftBulk.trim() && parsedBulk.urls.length === 0) {
+        throw new Error("No valid music URLs found in the bulk input.");
+      }
+      const mergedMusic = G10MusicPlaylist.merge(
+        loginReminderMusicPlaylist, [...(draftSingle ? [draftSingle] : []), ...parsedBulk.urls]
+      );
+      if (mergedMusic.excess) {
+        throw new Error(`Playlist supports up to ${G10MusicPlaylist.MAX_TRACKS} music links. Remove some first.`);
+      }
       const data = {
         schoolYear: $("#settingSchoolYear").value.trim(),
         currentTerm: Number($("#settingCurrentTerm").value),
 
         loginReminderEnabled: $("#settingLoginReminderEnabled").checked,
         loginReminderMusicEnabled: $("#settingLoginReminderMusicEnabled").checked,
-        loginReminderMusicUrl: $("#settingLoginReminderMusicUrl").value.trim(),
+        loginReminderMusicUrl: mergedMusic.urls[0] || "", // legacy clients
+        loginReminderMusicUrls: mergedMusic.urls,
         loginReminderPositiveMessage:
           $("#settingLoginReminderPositiveMessage").value.trim() ||
           DEFAULT_LOGIN_REMINDER_POSITIVE,
@@ -474,7 +512,12 @@
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       };
       await db.collection("settings").doc("main").set(data, { merge: true });
-      setStatus("#settingsStatus", "Settings saved.", true);
+      loginReminderMusicPlaylist = mergedMusic.urls;
+      $("#settingLoginReminderMusicUrl").value = "";
+      $("#settingLoginReminderBulkMusic").value = "";
+      renderMusicPlaylist();
+      updateMusicBulkDetection();
+      setStatus("#settingsStatus", `Settings saved. ${loginReminderMusicPlaylist.length} music track(s) in playlist.`, true);
       await loadAdminDashboardStats();
     } catch (err) {
       setStatus("#settingsStatus", err.message, false);
@@ -483,8 +526,75 @@
 
 
   function updateLoginReminderAdminControls() {
-    const musicEnabled = $("#settingLoginReminderMusicEnabled").checked;
-    $("#settingLoginReminderMusicUrl").disabled = !musicEnabled;
+    // Keep the playlist editor editable even while background music is OFF.
+    // This allows the teacher to prepare a playlist before enabling playback.
+  }
+
+  function renderMusicPlaylist() {
+    $("#loginReminderMusicCount").textContent =
+      `(${loginReminderMusicPlaylist.length} / ${G10MusicPlaylist.MAX_TRACKS})`;
+    $("#loginReminderMusicList").innerHTML = loginReminderMusicPlaylist.length
+      ? loginReminderMusicPlaylist.map((url, index) => `
+        <div class="reminder-music-track">
+          <span class="reminder-music-number">${index + 1}</span>
+          <span class="reminder-music-url" title="${escapeHtml(url)}">${escapeHtml(url)}</span>
+          <button class="secondary-btn" type="button" data-remove-music-index="${index}" aria-label="Remove track ${index + 1}">Remove</button>
+        </div>`).join("")
+      : '<p class="reminder-music-empty">No music added yet.</p>';
+  }
+
+  function updateMusicBulkDetection() {
+    const parsed = G10MusicPlaylist.extract($("#settingLoginReminderBulkMusic").value);
+    const merged = G10MusicPlaylist.merge(loginReminderMusicPlaylist, parsed.urls);
+    $("#loginReminderBulkDetection").textContent =
+      `${parsed.detected} URL(s) detected • ${merged.added.length} new • ` +
+      `${parsed.duplicates + merged.duplicates} duplicate(s) • ` +
+      `${parsed.invalid.length} invalid • ${merged.excess} over limit`;
+    $("#loginReminderAddBulkMusicBtn").disabled = !merged.added.length;
+  }
+
+  function addSingleMusicLink() {
+    const input = $("#settingLoginReminderMusicUrl");
+    const url = input.value.trim();
+    if (!G10MusicPlaylist.validUrl(url)) {
+      setStatus("#settingsStatus", "Enter a valid http(s) music URL first.", false);
+      return;
+    }
+    const result = G10MusicPlaylist.merge(loginReminderMusicPlaylist, [url]);
+    if (!result.added.length) {
+      setStatus("#settingsStatus", result.excess ? "Playlist limit reached (100 tracks)." : "That URL is already in the playlist.", false);
+      return;
+    }
+    loginReminderMusicPlaylist = result.urls;
+    input.value = "";
+    renderMusicPlaylist();
+    updateMusicBulkDetection();
+    setStatus("#settingsStatus", "Music link added. Click SAVE SETTINGS to publish.", true);
+  }
+
+  function addBulkMusicLinks() {
+    const input = $("#settingLoginReminderBulkMusic");
+    const parsed = G10MusicPlaylist.extract(input.value);
+    const merged = G10MusicPlaylist.merge(loginReminderMusicPlaylist, parsed.urls);
+    if (!merged.added.length) {
+      setStatus("#settingsStatus", "No new valid music links found. Check duplicates or URL format.", false);
+      return;
+    }
+    loginReminderMusicPlaylist = merged.urls;
+    input.value = "";
+    renderMusicPlaylist();
+    updateMusicBulkDetection();
+    setStatus("#settingsStatus",
+      `${merged.added.length} track(s) added. ${merged.duplicates + parsed.duplicates} duplicate(s) ignored.` +
+      (merged.excess ? ` ${merged.excess} exceeded the 100-track limit.` : "") +
+      " Click SAVE SETTINGS to publish.", true);
+  }
+
+  function currentPreviewMusicTracks() {
+    const single = $("#settingLoginReminderMusicUrl").value.trim();
+    const pasted = G10MusicPlaylist.extract($("#settingLoginReminderBulkMusic").value);
+    return G10MusicPlaylist.merge(loginReminderMusicPlaylist,
+      [...(G10MusicPlaylist.validUrl(single) ? [single] : []), ...pasted.urls]).urls;
   }
 
   function adminReminderTermName() {
@@ -565,25 +675,38 @@
     document.body.classList.add("modal-open");
 
     const musicEnabled = $("#settingLoginReminderMusicEnabled").checked;
-    const musicUrl = $("#settingLoginReminderMusicUrl").value.trim();
+    const musicUrls = currentPreviewMusicTracks();
 
-    if (musicEnabled && musicUrl) {
-      await startAdminReminderPreviewAudio(musicUrl);
+    if (musicEnabled && musicUrls.length) {
+      await startAdminReminderPreviewAudio(musicUrls);
     } else {
       stopAdminReminderPreviewAudio();
     }
   }
 
-  async function startAdminReminderPreviewAudio(url) {
+  async function startAdminReminderPreviewAudio(urls) {
+    stopAdminReminderPreviewAudio();
+    adminReminderPreviewTracks = G10MusicPlaylist.normalize(urls);
+    if (!adminReminderPreviewTracks.length) return;
+    adminReminderPreviewTrackIndex = Math.floor(Math.random() * adminReminderPreviewTracks.length);
+    const audio = $("#adminLoginReminderPreviewAudio");
+    audio.onended = () => {
+      if ($("#adminLoginReminderPreviewModal").classList.contains("hidden")) return;
+      adminReminderPreviewTrackIndex =
+        (adminReminderPreviewTrackIndex + 1) % adminReminderPreviewTracks.length;
+      void playAdminPreviewCurrentTrack();
+    };
+    await playAdminPreviewCurrentTrack();
+  }
+
+  async function playAdminPreviewCurrentTrack() {
     const audio = $("#adminLoginReminderPreviewAudio");
     const button = $("#adminLoginReminderPreviewPlayMusicBtn");
-
-    stopAdminReminderPreviewAudio();
-
-    audio.src = url;
-    audio.loop = true;
+    const url = adminReminderPreviewTracks[adminReminderPreviewTrackIndex];
+    if (!url) return;
+    if (audio.getAttribute("src") !== url) audio.src = url;
+    audio.loop = false;
     audio.volume = 0.45;
-
     try {
       await audio.play();
       button.classList.add("hidden");
@@ -594,43 +717,25 @@
   }
 
   async function playAdminReminderPreviewMusic() {
-    const audio = $("#adminLoginReminderPreviewAudio");
-    const button = $("#adminLoginReminderPreviewPlayMusicBtn");
-    const musicUrl = $("#settingLoginReminderMusicUrl").value.trim();
-
-    if (!musicUrl) {
-      button.classList.add("hidden");
+    if (!adminReminderPreviewTracks.length) {
+      await startAdminReminderPreviewAudio(currentPreviewMusicTracks());
       return;
     }
-
-    if (!audio.src) {
-      audio.src = musicUrl;
-      audio.loop = true;
-      audio.volume = 0.45;
-    }
-
-    try {
-      await audio.play();
-      button.classList.add("hidden");
-    } catch (_) {
-      button.classList.remove("hidden");
-      button.textContent = "Music unavailable";
-    }
+    await playAdminPreviewCurrentTrack();
   }
 
   function stopAdminReminderPreviewAudio() {
     const audio = $("#adminLoginReminderPreviewAudio");
     const button = $("#adminLoginReminderPreviewPlayMusicBtn");
-
+    adminReminderPreviewTracks = [];
+    adminReminderPreviewTrackIndex = -1;
     if (audio) {
+      audio.onended = null;
       audio.pause();
-      try {
-        audio.currentTime = 0;
-      } catch (_) {}
+      try { audio.currentTime = 0; } catch (_) {}
       audio.removeAttribute("src");
       audio.load();
     }
-
     if (button) {
       button.classList.add("hidden");
       button.textContent = "▶ Play Music";

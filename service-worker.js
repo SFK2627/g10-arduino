@@ -1,16 +1,17 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v31-tinkercad-project-monitor";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v32-bulk-reminder-music";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=31-tinkercad-project-monitor",
+  "./styles.css?v=32-bulk-reminder-music",
   "./firebase-config.js",
-  "./demo-data.js?v=31-tinkercad-project-monitor",
-  "./data-service.js?v=31-tinkercad-project-monitor",
-  "./app.js?v=31-tinkercad-project-monitor",
-  "./admin.js?v=31-tinkercad-project-monitor",
-  "./pwa.js?v=31-tinkercad-project-monitor",
+  "./demo-data.js?v=32-bulk-reminder-music",
+  "./data-service.js?v=32-bulk-reminder-music",
+  "./music-playlist.js?v=32-bulk-reminder-music",
+  "./app.js?v=32-bulk-reminder-music",
+  "./admin.js?v=32-bulk-reminder-music",
+  "./pwa.js?v=32-bulk-reminder-music",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

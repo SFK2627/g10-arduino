@@ -279,11 +279,17 @@
       .replace(/\{name\}/gi, profile?.fullName || profile?.studentId || "Student");
   }
 
+  let studentReminderTracks = [];
+  let studentReminderTrackIndex = -1;
+
   function studentReminderSettings() {
     return {
       enabled: settings?.loginReminderEnabled !== false,
       musicEnabled: settings?.loginReminderMusicEnabled === true,
-      musicUrl: String(settings?.loginReminderMusicUrl || "").trim(),
+      musicUrls: G10MusicPlaylist.normalize(
+        Array.isArray(settings?.loginReminderMusicUrls) && settings.loginReminderMusicUrls.length
+          ? settings.loginReminderMusicUrls : [settings?.loginReminderMusicUrl || ""]
+      ),
       positiveMessage: reminderMessageTemplate(
         settings?.loginReminderPositiveMessage,
         DEFAULT_LOGIN_REMINDER_POSITIVE
@@ -329,12 +335,12 @@
     $("#studentLoginReminderModal").classList.remove("hidden");
     document.body.classList.add("modal-open");
 
-    if (reminder.musicEnabled && reminder.musicUrl) {
+    if (reminder.musicEnabled && reminder.musicUrls.length) {
       // Autoplay is optional and must never delay or block modal display.
       void startLoginReminderAudio(
         $("#studentLoginReminderAudio"),
         $("#studentLoginReminderPlayMusicBtn"),
-        reminder.musicUrl
+        reminder.musicUrls
       );
     } else {
       stopLoginReminderAudio(
@@ -429,59 +435,67 @@
     }).join("");
   }
 
-  async function startLoginReminderAudio(audio, playButton, url) {
+  async function startLoginReminderAudio(audio, playButton, urls) {
     stopLoginReminderAudio(audio, playButton);
+    if (!audio || !playButton) return;
+    studentReminderTracks = G10MusicPlaylist.normalize(urls);
+    if (!studentReminderTracks.length) return;
 
-    if (!audio || !playButton || !url) return;
-
-    audio.src = url;
-    audio.loop = true;
-    audio.volume = 0.45;
-
-    try {
-      await audio.play();
-      playButton.classList.add("hidden");
-    } catch (_) {
-      playButton.classList.remove("hidden");
-      playButton.textContent = "▶ Play Music";
-    }
+    // Random starting track for variety at each login; then sequential play.
+    studentReminderTrackIndex = Math.floor(Math.random() * studentReminderTracks.length);
+    audio.onended = () => {
+      if ($("#studentLoginReminderModal").classList.contains("hidden")) return;
+      studentReminderTrackIndex =
+        (studentReminderTrackIndex + 1) % studentReminderTracks.length;
+      void playStudentReminderCurrentTrack();
+    };
+    await playStudentReminderCurrentTrack();
   }
 
-  async function playStudentLoginReminderMusic() {
-    const reminder = studentReminderSettings();
+  async function playStudentReminderCurrentTrack() {
     const audio = $("#studentLoginReminderAudio");
     const button = $("#studentLoginReminderPlayMusicBtn");
-
-    if (!reminder.musicEnabled || !reminder.musicUrl) {
-      button.classList.add("hidden");
-      return;
-    }
-
-    if (!audio.src) {
-      audio.src = reminder.musicUrl;
-      audio.loop = true;
-      audio.volume = 0.45;
-    }
-
+    const url = studentReminderTracks[studentReminderTrackIndex];
+    if (!audio || !button || !url) return;
+    if (audio.getAttribute("src") !== url) audio.src = url;
+    audio.loop = false;
+    audio.volume = 0.45;
     try {
       await audio.play();
       button.classList.add("hidden");
     } catch (_) {
       button.classList.remove("hidden");
-      button.textContent = "Music unavailable";
+      button.textContent = "▶ Play Music";
+    }
+  }
+
+  async function playStudentLoginReminderMusic() {
+    const reminder = studentReminderSettings();
+    if (!reminder.musicEnabled || !reminder.musicUrls.length) {
+      $("#studentLoginReminderPlayMusicBtn").classList.add("hidden");
+      return;
+    }
+    if (!studentReminderTracks.length) {
+      await startLoginReminderAudio(
+        $("#studentLoginReminderAudio"),
+        $("#studentLoginReminderPlayMusicBtn"),
+        reminder.musicUrls
+      );
+    } else {
+      await playStudentReminderCurrentTrack();
     }
   }
 
   function stopLoginReminderAudio(audio, playButton) {
+    studentReminderTracks = [];
+    studentReminderTrackIndex = -1;
     if (audio) {
+      audio.onended = null;
       audio.pause();
-      try {
-        audio.currentTime = 0;
-      } catch (_) {}
+      try { audio.currentTime = 0; } catch (_) {}
       audio.removeAttribute("src");
       audio.load();
     }
-
     if (playButton) {
       playButton.classList.add("hidden");
       playButton.textContent = "▶ Play Music";
