@@ -10,7 +10,7 @@
   let bulkStudentRows = [];
   let knownSections = [];
   let cachedStudentProfiles = [];
-  let tinkercadAssignments = new Map();
+  let tinkercadClassConfig = null;
   let tinkercadLoadingSerial = 0;
 
   let complianceSettingsCache = null;
@@ -154,17 +154,11 @@
     $("#studentSectionFilter").addEventListener("change", renderStudentProfiles);
     $("#studentSearchInput").addEventListener("input", renderStudentProfiles);
 
-    $("#tinkercadAssignmentForm").addEventListener("submit", saveTinkercadAssignment);
-    $("#tcAdminStudent").addEventListener("change", showTinkercadSelectedStudent);
-    $("#tcAdminClearBtn").addEventListener("click", clearTinkercadForm);
-    $("#tcAdminRemoveBtn").addEventListener("click", removeTinkercadAssignment);
+    $("#tinkercadClassForm").addEventListener("submit", saveTinkercadClassroom);
+    $("#tcAdminClassLink").addEventListener("input", previewTinkercadClassCode);
     $("#tcAdminSearch").addEventListener("input", renderTinkercadRoster);
     $("#tcAdminSection").addEventListener("change", renderTinkercadRoster);
-    $("#tcAdminRefreshBtn").addEventListener("click", loadTinkercadManager);
-    $("#tcAdminRoster").addEventListener("click", event => {
-      const row = event.target.closest("[data-tc-student-uid]");
-      if (row) selectTinkercadStudent(row.dataset.tcStudentUid);
-    });
+    $("#tcAdminRefreshBtn").addEventListener("click", () => loadTinkercadManager(true));
 
     $$("[data-close-student-password-reset]").forEach(el => {
       el.addEventListener("click", closeStudentPasswordResetModal);
@@ -2584,128 +2578,105 @@
 
 
 
-  // Tinkercad Classroom Class Seats are created in the teacher's Autodesk
-  // account first. Only the corresponding issued codes are mapped here.
-  async function loadTinkercadManager() {
-    const serial = ++tinkercadLoadingSerial;
-    const roster = $("#tcAdminRoster");
-    roster.textContent = "Loading student access…";
+  // Tinkercad seats are created in the official Tinkercad teacher account.
+  // The portal stores ONE classroom link; student nicknames are the existing
+  // Student IDs (unchanged, including hyphens). This never provisions seats.
+  function parseTinkercadClassLink(value) {
     try {
-      if (!cachedStudentProfiles.length) await loadStudents();
-      const snapshot = await db.collection("tinkercadAccess").get();
-      if (serial !== tinkercadLoadingSerial) return;
-      tinkercadAssignments = new Map(snapshot.docs.map(doc => [doc.id, doc.data() || {}]));
-      fillTinkercadStudentOptions();
-      renderTinkercadRoster();
-    } catch (err) {
-      roster.textContent = err.message || "Could not load Tinkercad access.";
-      setStatus("#tinkercadAdminStatus", err.message || "Check Firestore rules and try again.", false);
+      const url = new URL(String(value || "").trim());
+      if (url.protocol !== "https:" ||
+          !["www.tinkercad.com", "tinkercad.com"].includes(url.hostname) ||
+          url.port || url.username || url.password || url.search || url.hash) throw new Error();
+      const match = url.pathname.match(/^\/joinclass\/([A-Za-z0-9]{5,20})\/?$/);
+      if (!match) throw new Error();
+      return { classCode: match[1], classLink: `https://www.tinkercad.com/joinclass/${match[1]}` };
+    } catch (_) {
+      throw new Error("Enter a valid Tinkercad Class Invitation Link, for example https://www.tinkercad.com/joinclass/R6NEARGUX");
     }
   }
 
-  function fillTinkercadStudentOptions() {
-    const studentSelect = $("#tcAdminStudent");
-    const current = studentSelect.value;
-    studentSelect.innerHTML = '<option value="">Select a student</option>' +
-      cachedStudentProfiles.map(s => `<option value="${escapeHtml(s.uid)}">${escapeHtml(s.fullName || s.studentId)} • ${escapeHtml(s.section || "")}</option>`).join("");
-    if (cachedStudentProfiles.some(s => s.uid === current)) studentSelect.value = current;
-    const sectionSelect = $("#tcAdminSection");
-    const previous = sectionSelect.value;
+  function previewTinkercadClassCode() {
+    const preview = $("#tcAdminClassPreview");
+    try {
+      const { classCode } = parseTinkercadClassLink($("#tcAdminClassLink").value);
+      preview.textContent = `Class Code: ${classCode}`;
+      preview.classList.remove("tc-preview-invalid");
+    } catch (_) {
+      preview.textContent = "Enter a valid Tinkercad /joinclass/ link to extract the Class Code.";
+      preview.classList.add("tc-preview-invalid");
+    }
+  }
+
+  async function loadTinkercadManager(force = false) {
+    const serial = ++tinkercadLoadingSerial;
+    const roster = $("#tcAdminRoster");
+    roster.textContent = "Loading student records…";
+    try {
+      // refresh roster when required; class config always read from Firestore
+      if (force || !cachedStudentProfiles.length) await loadStudents();
+      const snapshot = await db.collection("settings").doc("tinkercadClassroom").get();
+      if (serial !== tinkercadLoadingSerial) return;
+      tinkercadClassConfig = snapshot.exists ? snapshot.data() || {} : null;
+      if (tinkercadClassConfig?.classLink) {
+        $("#tcAdminClassLink").value = tinkercadClassConfig.classLink;
+        $("#tcAdminEnabled").checked = tinkercadClassConfig.enabled === true;
+      }
+      previewTinkercadClassCode();
+      fillTinkercadSectionFilter();
+      renderTinkercadRoster();
+    } catch (err) {
+      if (serial !== tinkercadLoadingSerial) return;
+      roster.textContent = err.message || "Could not load classroom details.";
+      setStatus("#tinkercadAdminStatus", err.message || "Check Firestore access and try again.", false);
+    }
+  }
+
+  function fillTinkercadSectionFilter() {
+    const select = $("#tcAdminSection");
+    const previous = select.value;
     const sections = [...new Set(cachedStudentProfiles.map(s => normalizeSectionName(s.section)).filter(Boolean))].sort();
-    sectionSelect.innerHTML = '<option value="*">All Sections</option>' +
+    select.innerHTML = '<option value="*">All Sections</option>' +
       sections.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
-    if (sections.includes(previous)) sectionSelect.value = previous;
-    showTinkercadSelectedStudent();
+    if (sections.includes(previous)) select.value = previous;
   }
 
   function selectTinkercadStudent(uid) {
-    if (!cachedStudentProfiles.some(s => s.uid === uid)) return;
-    $("#tcAdminStudent").value = uid;
-    showTinkercadSelectedStudent();
-    $("#tcAdminStudent").scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  function showTinkercadSelectedStudent() {
-    const uid = $("#tcAdminStudent").value;
     const student = cachedStudentProfiles.find(s => s.uid === uid);
-    const saved = tinkercadAssignments.get(uid);
-    $("#tcSelectedStudent").textContent = student
-      ? `${student.fullName || student.studentId} • ${student.studentId || ""} • ${student.section || ""}`
-      : "No student selected.";
-    $("#tcAdminClassCode").value = saved?.classCode || "";
-    $("#tcAdminLoginCode").value = saved?.loginCode || "";
-    $("#tcAdminClassLink").value = saved?.classLink || "";
-    $("#tcAdminEnabled").checked = saved ? saved.enabled === true : true;
-    $("#tcAdminRemoveBtn").disabled = !uid || !saved;
-    setStatus("#tinkercadAdminStatus", "");
+    if (!student) return;
+    $("#tcAdminSearch").value = String(student.studentId || student.fullName || "");
+    $("#tcAdminSection").value = "*";
+    renderTinkercadRoster();
+    $("#tcAdminRoster").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  function clearTinkercadForm() {
-    $("#tcAdminStudent").value = "";
-    showTinkercadSelectedStudent();
-  }
-
-  function validTinkercadLink(value) {
-    if (!value) return "";
-    try {
-      const parsed = new URL(value);
-      if (parsed.protocol === "https:" && ["www.tinkercad.com", "tinkercad.com"].includes(parsed.hostname)) return parsed.href;
-    } catch (_) {}
-    throw new Error("Class Link must be an official https://www.tinkercad.com/ URL, or leave it blank.");
-  }
-
-  async function saveTinkercadAssignment(event) {
+  async function saveTinkercadClassroom(event) {
     event.preventDefault();
-    const uid = $("#tcAdminStudent").value;
-    if (!cachedStudentProfiles.some(s => s.uid === uid)) return setStatus("#tinkercadAdminStatus", "Select a student first.", false);
-    const classCode = $("#tcAdminClassCode").value.trim();
-    const loginCode = $("#tcAdminLoginCode").value.trim();
     const btn = $("#tcAdminSaveBtn");
-    if (!classCode || !loginCode) return setStatus("#tinkercadAdminStatus", "Enter both Tinkercad-issued codes.", false);
-    if (classCode.length > 80 || loginCode.length > 120) return setStatus("#tinkercadAdminStatus", "Code is too long.", false);
-    const duplicate = [...tinkercadAssignments.entries()].find(([otherUid, item]) =>
-      otherUid !== uid && String(item.classCode || "").toLowerCase() === classCode.toLowerCase() &&
-      String(item.loginCode || "").toLowerCase() === loginCode.toLowerCase());
-    if (duplicate) return setStatus("#tinkercadAdminStatus", "This Class Code + Login Code is already assigned to another student. Verify your Tinkercad Class Seat roster.", false);
+    let info;
     try {
-      const classLink = validTinkercadLink($("#tcAdminClassLink").value.trim());
-      setBusy(btn, true, "SAVING…");
-      const enabled = $("#tcAdminEnabled").checked;
-      const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp();
-      await db.collection("tinkercadAccess").doc(uid).set({
-        classCode, loginCode, classLink, enabled,
-        updatedAt: serverTimestamp,
-        updatedBy: admin.uid || ""
-      }, { merge: true });
-      tinkercadAssignments.set(uid, { classCode, loginCode, classLink, enabled });
-      renderTinkercadRoster();
-      showTinkercadSelectedStudent();
-      setStatus("#tinkercadAdminStatus", "Student Tinkercad access saved. Only this student (and admins) can read their assigned document.", true);
+      info = parseTinkercadClassLink($("#tcAdminClassLink").value);
     } catch (err) {
-      setStatus("#tinkercadAdminStatus", err.message || "Could not save Tinkercad access.", false);
-    } finally {
-      setBusy(btn, false, "SAVE ASSIGNMENT");
+      return setStatus("#tinkercadAdminStatus", err.message, false);
     }
-  }
-
-  async function removeTinkercadAssignment() {
-    const uid = $("#tcAdminStudent").value;
-    const student = cachedStudentProfiles.find(s => s.uid === uid);
-    if (!student || !tinkercadAssignments.has(uid)) return;
-    if (!confirm(`Remove the Arduino Hub Tinkercad assignment for ${student.fullName || student.studentId}? This does NOT delete the actual seat or projects in Tinkercad.`)) return;
-    const btn = $("#tcAdminRemoveBtn");
-    setBusy(btn, true, "REMOVING…");
+    const enabled = $("#tcAdminEnabled").checked;
+    setBusy(btn, true, "SAVING…");
     try {
-      await db.collection("tinkercadAccess").doc(uid).delete();
-      tinkercadAssignments.delete(uid);
+      await db.collection("settings").doc("tinkercadClassroom").set({
+        ...info, enabled,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: admin.uid || ""
+      });
+      tinkercadClassConfig = { ...info, enabled };
+      $("#tcAdminClassLink").value = info.classLink;
+      previewTinkercadClassCode();
       renderTinkercadRoster();
-      showTinkercadSelectedStudent();
-      setStatus("#tinkercadAdminStatus", "Assignment removed from the portal only. Tinkercad projects were not affected.", true);
+      setStatus("#tinkercadAdminStatus", enabled
+        ? "Classroom saved for all students in Arduino Hub. Verify the matching Tinkercad Class Seats before student login."
+        : "Classroom settings saved. Student display is currently disabled.", true);
     } catch (err) {
-      setStatus("#tinkercadAdminStatus", err.message || "Could not remove assignment.", false);
+      setStatus("#tinkercadAdminStatus", err.message || "Could not save classroom setting.", false);
     } finally {
-      btn.textContent = "Remove Assignment";
-      btn.disabled = !tinkercadAssignments.has(uid);
+      setBusy(btn, false, "SAVE CLASSROOM FOR ALL STUDENTS");
     }
   }
 
@@ -2716,15 +2687,23 @@
       (section === "*" || normalizeSectionName(s.section) === section) &&
       (!search || [s.fullName, s.studentId, s.section].join(" ").toLowerCase().includes(search))
     );
-    const assignedCount = cachedStudentProfiles.filter(s => tinkercadAssignments.get(s.uid)?.enabled === true).length;
-    $("#tcAdminStats").textContent = `${assignedCount} active assignment${assignedCount === 1 ? "" : "s"} • ${cachedStudentProfiles.length} student${cachedStudentProfiles.length === 1 ? "" : "s"}`;
+    const presentIds = new Map();
+    for (const s of cachedStudentProfiles) {
+      const key = String(s.studentId || "").trim().toLowerCase();
+      if (key) presentIds.set(key, (presentIds.get(key) || 0) + 1);
+    }
+    const invalid = cachedStudentProfiles.filter(s => !String(s.studentId || "").trim() ||
+      presentIds.get(String(s.studentId || "").trim().toLowerCase()) > 1).length;
+    const status = tinkercadClassConfig?.enabled === true ? "Classroom active" : "Classroom not active";
+    $("#tcAdminStats").textContent = `${status} · ${cachedStudentProfiles.length} students · ${invalid} missing/duplicate Student IDs · Tinkercad seat matching not verified`;
     $("#tcAdminRoster").innerHTML = rows.length ? rows.map(s => {
-      const item = tinkercadAssignments.get(s.uid);
-      const label = item ? (item.enabled === true ? "Assigned" : "Disabled") : "Not assigned";
-      return `<button class="tc-roster-row" type="button" data-tc-student-uid="${escapeHtml(s.uid)}">
-        <span><strong>${escapeHtml(s.fullName || s.studentId)}</strong><small>${escapeHtml(s.section || "Grade 10")} • ${escapeHtml(s.studentId || "")}</small></span>
-        <span class="tc-roster-state ${item?.enabled === true ? "is-ready" : ""}">${label}</span>
-      </button>`;
+      const id = String(s.studentId || "").trim();
+      const duplicate = id && presentIds.get(id.toLowerCase()) > 1;
+      const needsReview = !id || duplicate;
+      return `<div class="tc-roster-row" data-tc-student-uid="${escapeHtml(s.uid)}">
+        <span><strong>${escapeHtml(s.fullName || s.studentId || "Student")}</strong><small>${escapeHtml(s.section || "Grade 10")} · ${escapeHtml(id || "Missing Student ID")}</small></span>
+        <span class="tc-roster-login"><small>Student Login</small><strong>${escapeHtml(id || "—")}</strong><em class="tc-roster-state ${needsReview ? "tc-state-warning" : ""}">${needsReview ? "Review ID" : "From record"}</em></span>
+      </div>`;
     }).join("") : '<div class="tc-student-placeholder">No students match this filter.</div>';
   }
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121316">
   <title>Admin • MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css?v=29-tinkercad-manager">
+  <link rel="stylesheet" href="styles.css?v=30-tinkercad-auto-student-id">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -21,10 +21,10 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js?v=29-tinkercad-manager"></script>
-  <script defer src="data-service.js?v=29-tinkercad-manager"></script>
-  <script defer src="admin.js?v=29-tinkercad-manager"></script>
-  <script defer src="pwa.js?v=29-tinkercad-manager"></script>
+  <script defer src="demo-data.js?v=30-tinkercad-auto-student-id"></script>
+  <script defer src="data-service.js?v=30-tinkercad-auto-student-id"></script>
+  <script defer src="admin.js?v=30-tinkercad-auto-student-id"></script>
+  <script defer src="pwa.js?v=30-tinkercad-auto-student-id"></script>
 </head>
 <body>
   <section id="adminLoginView" class="admin-login">
@@ -100,7 +100,7 @@
         <button class="admin-tab" data-admin-page="lessons">Lessons</button>
         <button class="admin-tab" data-admin-page="activities">Activities</button>
         <button class="admin-tab" data-admin-page="students">Students</button>
-        <button class="admin-tab" data-admin-page="tinkercad">Tinkercad Accounts</button>
+        <button class="admin-tab" data-admin-page="tinkercad">Tinkercad Classroom</button>
         <button class="admin-tab" data-admin-page="sync">Compliance Sync</button>
       </nav>
 
@@ -508,34 +508,30 @@
         <div class="tc-page-heading">
           <div>
             <p class="section-kicker">TINKERCAD CLASSROOMS</p>
-            <h3>Tinkercad Account Manager</h3>
-            <p>Assign the real Class Code and individual Login Code from your Tinkercad Classrooms roster. This portal does not create Autodesk accounts.</p>
+            <h3>Tinkercad Classroom Manager</h3>
+            <p>One classroom link for all ICT 10 students. Their Student ID is automatically used as the Tinkercad Student Login, exactly as recorded, including hyphens.</p>
           </div>
           <a class="mini-btn tc-official-link" href="https://www.tinkercad.com/dashboard?type=classes" target="_blank" rel="noopener noreferrer">Open Tinkercad Classes ↗</a>
         </div>
         <div class="tc-admin-layout">
           <article class="panel tc-assignment-panel">
-            <h3>Assign Student Access</h3>
-            <p>Choose a student and enter the codes already created in your Tinkercad teacher account.</p>
-            <form id="tinkercadAssignmentForm" class="admin-form">
-              <label><span>Student</span><select id="tcAdminStudent" required><option value="">Select a student</option></select></label>
-              <div id="tcSelectedStudent" class="tc-selected-student">No student selected.</div>
-              <label><span>Tinkercad Class Code</span><input id="tcAdminClassCode" maxlength="80" required autocomplete="off" placeholder="Class Code from Tinkercad"></label>
-              <label><span>Student Login Code / Nickname</span><input id="tcAdminLoginCode" maxlength="120" required autocomplete="off" placeholder="Individual code from Class Seats"></label>
-              <label><span>Class Link (optional)</span><input id="tcAdminClassLink" type="url" maxlength="500" placeholder="https://www.tinkercad.com/..."></label>
-              <label class="check-row"><input id="tcAdminEnabled" type="checkbox" checked> <span>Make this access visible to the student</span></label>
+            <h3>One-time Classroom Setup</h3>
+            <p>Paste the real class invitation link once. The Arduino Hub automatically shows this classroom to every student who signs in.</p>
+            <form id="tinkercadClassForm" class="admin-form">
+              <label><span>Tinkercad Class Invitation Link</span><input id="tcAdminClassLink" type="url" maxlength="300" required autocomplete="off" value="https://www.tinkercad.com/joinclass/R6NEARGUX" placeholder="https://www.tinkercad.com/joinclass/R6NEARGUX"></label>
+              <div id="tcAdminClassPreview" class="tc-class-preview" aria-live="polite">Class Code: R6NEARGUX</div>
+              <label class="check-row"><input id="tcAdminEnabled" type="checkbox" checked> <span>Show Tinkercad access to students</span></label>
               <div class="inline-actions">
-                <button id="tcAdminSaveBtn" class="primary-btn" type="submit">SAVE ASSIGNMENT</button>
-                <button id="tcAdminClearBtn" class="mini-btn" type="button">Clear Form</button>
-                <button id="tcAdminRemoveBtn" class="mini-btn tc-danger-button" type="button" disabled>Remove Assignment</button>
+                <button id="tcAdminSaveBtn" class="primary-btn" type="submit">SAVE CLASSROOM FOR ALL STUDENTS</button>
               </div>
             </form>
             <div id="tinkercadAdminStatus" class="admin-status" role="status" aria-live="polite"></div>
-            <p class="tc-admin-note">Removing an assignment from Arduino Hub does not delete the Tinkercad Class Seat or its designs. To change the actual login code, update it in Tinkercad first.</p>
+            <p class="tc-admin-note"><strong>Important:</strong> This configures Arduino Hub only. Student seats must already exist in Tinkercad, and their Student Login must match the Student ID shown in the directory. Saving the class link does not create or verify Autodesk seats.</p>
+            <p class="tc-admin-note">The setting is shared across all sections. Previous individual Arduino Hub assignments, if any, are ignored by this new page. No per-student encoding, extra Firebase accounts, Gmail, or Apps Script changes needed.</p>
           </article>
           <article class="panel tc-roster-panel">
             <div class="tc-roster-top">
-              <div><h3>Student Access Directory</h3><p id="tcAdminStats">Loading assignments…</p></div>
+              <div><h3>Automatic Student Login Preview</h3><p id="tcAdminStats">Loading students…</p></div>
               <button id="tcAdminRefreshBtn" class="mini-btn" type="button">Refresh</button>
             </div>
             <div class="tc-roster-filters">

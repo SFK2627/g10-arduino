@@ -1,16 +1,16 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v29-tinkercad-manager";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v30-tinkercad-auto-student-id";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=28-student-nav-login-first",
+  "./styles.css?v=30-tinkercad-auto-student-id",
   "./firebase-config.js",
-  "./demo-data.js?v=28-student-nav-login-first",
-  "./data-service.js?v=28-student-nav-login-first",
-  "./app.js?v=28-student-nav-login-first",
-  "./admin.js?v=28-student-nav-login-first",
-  "./pwa.js?v=28-student-nav-login-first",
+  "./demo-data.js?v=30-tinkercad-auto-student-id",
+  "./data-service.js?v=30-tinkercad-auto-student-id",
+  "./app.js?v=30-tinkercad-auto-student-id",
+  "./admin.js?v=30-tinkercad-auto-student-id",
+  "./pwa.js?v=30-tinkercad-auto-student-id",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

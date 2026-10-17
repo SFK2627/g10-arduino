@@ -7824,3 +7824,16 @@ button {
   .mobile-nav {grid-template-columns: repeat(6, minmax(64px, 1fr)); overflow-x: auto; overflow-y: hidden;}
   .mobile-nav-btn {min-width: 64px; white-space: nowrap;}
 }
+
+/* Tinkercad auto Student-ID classroom configuration (v30) */
+.tc-class-preview {padding:12px 14px;border:1px solid #cfe5d5;border-radius:10px;background:#ecf8ee;color:#206239;font-weight:800;font-size:.9rem;overflow-wrap:anywhere;}
+.tc-class-preview.tc-preview-invalid {background:#fff2ed;color:#9e3d2c;border-color:#f3cfc5;}
+.tc-roster-row {cursor:default;}
+.tc-roster-row:hover {background:#fff;border-color:#e1e4e9;}
+.tc-roster-login {display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;min-width:0;max-width:48%;}
+.tc-roster-login small {color:#676f7d;font-size:.66rem;}
+.tc-roster-login strong {font-size:.86rem;color:#182633;overflow-wrap:anywhere;}
+.tc-roster-login em {font-style:normal;}
+.tc-roster-state.tc-state-warning {background:#fff1d8;color:#8c5b10;}
+.tc-student-id-note {color:#6c7380;font-size:.73rem;line-height:1.45;}
+@media(max-width:620px){.tc-roster-login{max-width:50%;}.tc-roster-row{gap:7px;}.tc-roster-row strong{font-size:.79rem;}}

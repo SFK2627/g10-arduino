@@ -116,7 +116,7 @@
     if (!/^https?:$/.test(location.protocol)) return;
 
     try {
-      await navigator.serviceWorker.register("./service-worker.js?v=27-ww-repair", {
+      await navigator.serviceWorker.register("./service-worker.js?v=30-tinkercad-auto-student-id", {
         scope: "./"
       });
     } catch (error) {

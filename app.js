@@ -1030,38 +1030,43 @@
   async function loadTinkercadAccess(force = false) {
     const target = $("#tcStudentAccess");
     if (!profile) return;
-    // Tinkercad codes can be changed/revoked by the teacher: always read the
-    // current record when the student opens or refreshes the page.
     const serial = ++tinkercadLoadSerial;
-    target.innerHTML = '<div class="tc-student-placeholder">Loading your private Tinkercad access…</div>';
+    target.innerHTML = '<div class="tc-student-placeholder">Loading your Tinkercad classroom…</div>';
     try {
-      const access = await G10DataService.getOwnTinkercadAccess();
+      const classroom = await G10DataService.getTinkercadClassroom();
       if (serial !== tinkercadLoadSerial || !profile) return;
-      if (!access?.classCode || !access?.loginCode) {
-        target.innerHTML = emptyState("No Tinkercad access assigned yet", "Your teacher will assign a Class Code and individual Login Code here after creating your Class Seat in Tinkercad.");
+      if (!classroom) {
+        target.innerHTML = emptyState("Tinkercad classroom not active", "Your teacher will publish the class invitation link in Arduino Hub.");
         return;
       }
-      const tinkercadLink = safeTinkercadClassLink(access.classLink);
+      // The authenticated student's OWN Firebase profile supplies the actual
+      // Tinkercad seat nickname. Keep Student ID formatting including hyphens.
+      const loginCode = String(profile.studentId || "").trim();
+      if (!loginCode) {
+        target.innerHTML = emptyState("Student ID unavailable", "Contact your teacher to correct your Student ID in Arduino Hub.");
+        return;
+      }
+      const tinkercadLink = safeTinkercadClassLink(classroom.classLink);
       target.innerHTML = `
         <article class="tc-student-card">
           <div class="tc-student-card-head">
-            <div><span class="card-kicker">PERSONAL TINKERCAD CLASS SEAT</span><h3>${escapeHtml(profile.fullName || "Student")}</h3></div>
-            <span class="tc-status-ready">Assigned</span>
+            <div><span class="card-kicker">YOUR TINKERCAD CLASS SEAT</span><h3>${escapeHtml(profile.fullName || "Student")}</h3></div>
+            <span class="tc-status-ready">Class details available</span>
           </div>
           <div class="tc-credential-grid">
-            <div class="tc-credential"><small>CLASS CODE</small><strong>${escapeHtml(access.classCode)}</strong><button class="mini-btn" type="button" data-tc-copy="class">Copy Class Code</button></div>
-            <div class="tc-credential"><small>YOUR PERSONAL LOGIN CODE</small><strong id="tcStudentLoginValue" data-code="${escapeAttr(access.loginCode)}">••••••••</strong><div class="tc-credential-actions"><button class="mini-btn" type="button" data-tc-reveal>Show</button><button class="mini-btn" type="button" data-tc-copy="login">Copy Code</button></div></div>
+            <div class="tc-credential"><small>CLASS CODE</small><strong id="tcStudentClassValue">${escapeHtml(classroom.classCode)}</strong><button class="mini-btn" type="button" data-tc-copy="class">Copy Class Code</button></div>
+            <div class="tc-credential"><small>YOUR STUDENT LOGIN / NICKNAME</small><strong id="tcStudentLoginValue">${escapeHtml(loginCode)}</strong><button class="mini-btn" type="button" data-tc-copy="login">Copy Student Login</button><span class="tc-student-id-note">Automatically taken from your Student ID (hyphens preserved).</span></div>
           </div>
           <p id="tcStudentActionStatus" class="tc-student-feedback" role="status"></p>
-          <a class="primary-btn tc-launch-button" href="${escapeAttr(tinkercadLink)}" target="_blank" rel="noopener noreferrer">Open Tinkercad ↗</a>
-          <div class="tc-student-help"><strong>How to log in:</strong> Open Tinkercad, choose the option to join your teacher's class, enter the Class Code, then use your personal Login Code / nickname. Your circuits stay with your Tinkercad Class Seat.</div>
-          <p class="tc-student-privacy">Keep your personal Login Code private. Sign out of both Tinkercad and Arduino Hub on shared computers.</p>
+          <a class="primary-btn tc-launch-button" href="${escapeAttr(tinkercadLink)}" target="_blank" rel="noopener noreferrer">Open Tinkercad Class ↗</a>
+          <div class="tc-student-help"><strong>How to log in:</strong> Open the class link, choose the Class Seat / Student Login option, and enter your Student Login exactly as shown. These details must match the seat already created by your teacher on Tinkercad. Arduino Hub does not automatically sign you in to Autodesk.</div>
+          <p class="tc-student-privacy">Use only your own seat and sign out on shared computers. If Tinkercad does not recognize your Student ID, tell your teacher.</p>
         </article>`;
     } catch (err) {
       if (serial !== tinkercadLoadSerial) return;
       const message = String(err?.code || "").includes("permission-denied")
-        ? "Tinkercad access is not enabled in Firestore Rules yet. Please contact your teacher."
-        : (err?.message || "Unable to load your account access.");
+        ? "Cannot read the classroom setting. Ask your teacher to check Firestore settings permissions."
+        : (err?.message || "Unable to load your classroom.");
       target.innerHTML = errorState(new Error(message));
     }
   }
@@ -1069,37 +1074,25 @@
   function safeTinkercadClassLink(value) {
     try {
       const url = new URL(String(value || ""));
-      if (url.protocol === "https:" && (url.hostname === "tinkercad.com" || url.hostname === "www.tinkercad.com")) return url.href;
+      if (url.protocol === "https:" && ["www.tinkercad.com", "tinkercad.com"].includes(url.hostname) &&
+          /^\/joinclass\/[A-Za-z0-9]{5,20}\/?$/.test(url.pathname)) return url.href;
     } catch (_) {}
     return "https://www.tinkercad.com/";
   }
 
   async function handleTinkercadAction(event) {
     const copy = event.target.closest("[data-tc-copy]");
-    const reveal = event.target.closest("[data-tc-reveal]");
-    const codeNode = $("#tcStudentLoginValue");
-    if (reveal && codeNode) {
-      const visible = reveal.textContent === "Hide";
-      codeNode.textContent = visible ? "••••••••" : codeNode.dataset.code;
-      reveal.textContent = visible ? "Show" : "Hide";
-      return;
-    }
     if (!copy) return;
     const code = copy.dataset.tcCopy === "login"
-      ? codeNode?.dataset.code
-      : $(".tc-credential strong")?.textContent;
+      ? $("#tcStudentLoginValue")?.textContent
+      : $("#tcStudentClassValue")?.textContent;
     const status = $("#tcStudentActionStatus");
-    if (!code) return;
+    if (!code || !status) return;
     try {
       await navigator.clipboard.writeText(code);
-      status.textContent = "Code copied. Paste it into the Tinkercad sign-in page.";
+      status.textContent = "Copied! Paste it into Tinkercad's Class Seat login.";
     } catch (_) {
-      status.textContent = "Could not copy automatically. Select and copy the code manually.";
-      if (codeNode && copy.dataset.tcCopy === "login") {
-        codeNode.textContent = code;
-        const button = $("[data-tc-reveal]");
-        if (button) button.textContent = "Hide";
-      }
+      status.textContent = "Copy is unavailable. Select the visible text to copy manually.";
     }
   }
 

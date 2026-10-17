@@ -749,25 +749,30 @@
   }
 
 
-  // A student may read only the document whose id equals their Firebase Auth UID.
-  // Firestore rules, not the UI or a user-supplied UID, enforce this boundary.
-  async function getOwnTinkercadAccess() {
+  // Single shared classroom setting, readable by signed-in students under
+  // the EXISTING /settings/{documentId} Firestore rule. The Student Login is
+  // taken from the student's authenticated profile in app.js, NOT this setting.
+  async function getTinkercadClassroom() {
     await init();
     if (demoMode) return null;
     if (!auth?.currentUser || !db) throw new Error("Please sign in again.");
-
     const uid = auth.currentUser.uid;
-    const snapshot = await db.collection("tinkercadAccess").doc(uid).get();
-    if (auth.currentUser?.uid !== uid) throw new Error("Student account changed. Please retry.");
+    const snapshot = await db.collection("settings").doc("tinkercadClassroom").get();
+    if (auth.currentUser?.uid !== uid) throw new Error("Account changed. Please retry.");
     if (!snapshot.exists) return null;
-    const record = snapshot.data() || {};
-    if (record.enabled !== true) return null;
-    return {
-      classCode: String(record.classCode || ""),
-      loginCode: String(record.loginCode || ""),
-      classLink: String(record.classLink || ""),
-      updatedAt: record.updatedAt || null
-    };
+    const data = snapshot.data() || {};
+    if (data.enabled !== true) return null;
+    const classCode = String(data.classCode || "").trim();
+    const classLink = String(data.classLink || "").trim();
+    // Class Link is teacher-configured, but validate it before displaying.
+    try {
+      const url = new URL(classLink);
+      if (url.protocol !== "https:" || !["www.tinkercad.com", "tinkercad.com"].includes(url.hostname) ||
+          url.port || url.search || url.hash || url.username || url.password ||
+          !/^\/joinclass\/[A-Za-z0-9]{5,20}\/?$/.test(url.pathname) ||
+          url.pathname.match(/^\/joinclass\/([A-Za-z0-9]{5,20})/)[1] !== classCode) return null;
+    } catch (_) { return null; }
+    return { classCode, classLink, updatedAt: data.updatedAt || null };
   }
 
   window.G10DataService = {
@@ -787,7 +792,7 @@
     getAnnouncementHeartStates,
     toggleAnnouncementHeart,
     getCompliance,
-    getOwnTinkercadAccess,
+    getTinkercadClassroom,
     clearPageCache,
     clearAllCache,
     changeStudentPassword,
