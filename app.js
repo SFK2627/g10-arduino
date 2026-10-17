@@ -16,6 +16,11 @@
 
   let loginReminderRequested = false;
   let tinkercadLoadSerial = 0;
+  let projectReviewLoadSerial = 0;
+  const PROJECT_REVIEW_STATUSES = {
+    "not-reviewed": "Not Reviewed", "for-checking": "For Checking",
+    "checked": "Checked", "needs-revision": "Needs Revision"
+  };
 
   const DEFAULT_LOGIN_REMINDER_POSITIVE =
     "Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.";
@@ -118,7 +123,10 @@
       el.addEventListener("click", closeViewer);
     });
 
-    $("#tcStudentRefreshBtn").addEventListener("click", () => loadTinkercadAccess(true));
+    $("#tcStudentRefreshBtn").addEventListener("click", () => {
+      void Promise.all([loadTinkercadAccess(true), loadStudentProjectReviews(true)]);
+    });
+    $("#pmStudentRefresh").addEventListener("click", () => loadStudentProjectReviews(true));
     $("#tcStudentAccess").addEventListener("click", handleTinkercadAction);
 
     $("#openComplianceLegendBtn").addEventListener("click", openComplianceLegend);
@@ -1023,7 +1031,9 @@
     if (currentPage === "lessons" && (!loaded.lessons || force)) await loadLessons();
     if (currentPage === "activities" && (!loaded.activities || force)) await loadActivities();
     if (currentPage === "compliance" && (!loaded.compliance || force)) await loadCompliance();
-    if (currentPage === "tinkercad") await loadTinkercadAccess(force);
+    if (currentPage === "tinkercad") {
+      await Promise.all([loadTinkercadAccess(force), loadStudentProjectReviews(force)]);
+    }
   }
 
 
@@ -1068,6 +1078,59 @@
         ? "Cannot read the classroom setting. Ask your teacher to check Firestore settings permissions."
         : (err?.message || "Unable to load your classroom.");
       target.innerHTML = errorState(new Error(message));
+    }
+  }
+
+  // Teacher-maintained project reviews, NOT a Tinkercad project sync.
+  // Every review is read by exact Firebase UID; students never list peers.
+  async function loadStudentProjectReviews() {
+    const target = $("#pmStudentList");
+    const serial = ++projectReviewLoadSerial;
+    const term = currentTerm;
+    const currentProfile = profile;
+    if (!currentProfile) return;
+    if (G10DataService.isDemo()) {
+      target.textContent = "Review tracking requires your live student account.";
+      return;
+    }
+    target.innerHTML = '<p class="pm-muted">Loading your teacher’s project reviews…</p>';
+    try {
+      const database = G10DataService.getFirebaseHandles().db;
+      const activitySnap = await database.collection("tinkercadProjectTasks").get();
+      if (serial !== projectReviewLoadSerial || currentProfile !== profile || term !== currentTerm) return;
+      const section = String(currentProfile.section || "").trim().replace(/\s+/g, " ");
+      const tasks = activitySnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(task => task.active === true && Number(task.term) === term &&
+          (task.section === "ALL_SECTIONS" || String(task.section || "").trim().replace(/\s+/g, " ") === section))
+        .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+      if (!tasks.length) {
+        target.innerHTML = '<p class="pm-muted">Your teacher has not published any project review activities for this term yet.</p>';
+        return;
+      }
+      const details = await Promise.all(tasks.map(async task => {
+        const snap = await database.collection("tinkercadProjectReviews").doc(task.id)
+          .collection("students").doc(currentProfile.uid).get();
+        return { task, review: snap.exists ? snap.data() : {} };
+      }));
+      if (serial !== projectReviewLoadSerial || currentProfile !== profile || term !== currentTerm) return;
+      target.innerHTML = details.map(({ task, review }) => {
+        const status = PROJECT_REVIEW_STATUSES[review?.status] ? review.status : "not-reviewed";
+        const note = String(review?.note || "").trim();
+        let date = "";
+        if (review?.reviewedAt?.toDate) {
+          date = review.reviewedAt.toDate().toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+        }
+        return `<article class="pm-student-review-card">
+          <div class="pm-student-review-card-head"><h4>${escapeHtml(task.title || "Arduino activity")}</h4><span class="pm-chip pm-${status}">${escapeHtml(PROJECT_REVIEW_STATUSES[status])}</span></div>
+          ${note ? `<p class="pm-feedback-note"><strong>Teacher feedback:</strong> ${escapeHtml(note)}</p>` : ""}
+          ${date ? `<small class="pm-review-date">Last reviewed: ${escapeHtml(date)}</small>` : ""}
+        </article>`;
+      }).join("") + '<p class="pm-muted pm-review-disclaimer">Review statuses are updated by your teacher. Your actual saved circuits are on Tinkercad; “Not Reviewed” does not mean you have not submitted a project.</p>';
+    } catch (err) {
+      if (serial !== projectReviewLoadSerial) return;
+      target.textContent = String(err?.code || "").includes("permission-denied")
+        ? "Project reviews are temporarily unavailable. Ask your teacher to deploy the updated Firestore Rules."
+        : "Unable to load your reviews. Please refresh or try again later.";
     }
   }
 
@@ -1566,7 +1629,9 @@
   async function logout() {
     loginReminderRequested = false;
     ++tinkercadLoadSerial;
+    ++projectReviewLoadSerial;
     $("#tcStudentAccess").textContent = "";
+    $("#pmStudentList").textContent = "";
     $("#studentLoginPreparing").classList.add("hidden");
 
     if (!$("#studentLoginReminderModal").classList.contains("hidden")) {

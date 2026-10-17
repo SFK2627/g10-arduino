@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121316">
   <title>Admin • MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css?v=30-tinkercad-auto-student-id">
+  <link rel="stylesheet" href="styles.css?v=31-tinkercad-project-monitor">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -21,10 +21,10 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js?v=30-tinkercad-auto-student-id"></script>
-  <script defer src="data-service.js?v=30-tinkercad-auto-student-id"></script>
-  <script defer src="admin.js?v=30-tinkercad-auto-student-id"></script>
-  <script defer src="pwa.js?v=30-tinkercad-auto-student-id"></script>
+  <script defer src="demo-data.js?v=31-tinkercad-project-monitor"></script>
+  <script defer src="data-service.js?v=31-tinkercad-project-monitor"></script>
+  <script defer src="admin.js?v=31-tinkercad-project-monitor"></script>
+  <script defer src="pwa.js?v=31-tinkercad-project-monitor"></script>
 </head>
 <body>
   <section id="adminLoginView" class="admin-login">
@@ -101,6 +101,7 @@
         <button class="admin-tab" data-admin-page="activities">Activities</button>
         <button class="admin-tab" data-admin-page="students">Students</button>
         <button class="admin-tab" data-admin-page="tinkercad">Tinkercad Classroom</button>
+        <button class="admin-tab" data-admin-page="project-monitor">Project Monitoring</button>
         <button class="admin-tab" data-admin-page="sync">Compliance Sync</button>
       </nav>
 
@@ -539,6 +540,48 @@
               <select id="tcAdminSection" aria-label="Filter Tinkercad section"><option value="*">All Sections</option></select>
             </div>
             <div id="tcAdminRoster" class="tc-roster-list" aria-live="polite">Loading roster…</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="admin-page-project-monitor" class="admin-page">
+        <div class="pm-page-heading">
+          <div>
+            <p class="section-kicker">TINKERCAD • TEACHER REVIEW</p>
+            <h3>Project Monitoring Center</h3>
+            <p>Review actual circuits in Tinkercad, then record each student's status here. These statuses are teacher-maintained; Arduino Hub does not retrieve or detect Tinkercad projects.</p>
+          </div>
+          <a class="mini-btn pm-external-link" href="https://www.tinkercad.com/dashboard?type=classes" target="_blank" rel="noopener noreferrer">Open Tinkercad Classes ↗</a>
+        </div>
+        <div class="pm-admin-layout">
+          <article class="panel pm-task-panel">
+            <h3>Set Up an Arduino Activity</h3>
+            <p class="pm-muted">Create each activity once, then track review status by student. No student links required.</p>
+            <form id="pmTaskForm" class="admin-form">
+              <label><span>Activity name</span><input id="pmTaskTitle" maxlength="100" required placeholder="e.g. Electronic Dice Circuit"></label>
+              <div class="pm-form-grid">
+                <label><span>Term</span><select id="pmTaskTerm"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></label>
+                <label><span>Sections</span><select id="pmTaskSection"><option value="ALL_SECTIONS">All Sections</option></select></label>
+              </div>
+              <button id="pmCreateTaskBtn" class="primary-btn" type="submit">CREATE ACTIVITY</button>
+            </form>
+            <div id="pmTaskMessage" class="admin-status" role="status" aria-live="polite"></div>
+            <p class="pm-muted">A saved review does not confirm automatic submission in Tinkercad. Open the actual Tinkercad class to inspect circuits.</p>
+          </article>
+          <article class="panel pm-review-panel">
+            <div class="pm-review-head"><div><h3>Review Student Projects</h3><p class="pm-muted">Choose a term, section and activity to begin checking.</p></div><button id="pmRefresh" class="mini-btn" type="button">Refresh</button></div>
+            <div class="pm-filter-grid">
+              <label><span>Term</span><select id="pmTermFilter"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></label>
+              <label><span>Section</span><select id="pmSectionFilter"><option value="*">All Sections</option></select></label>
+              <label class="pm-task-choice"><span>Activity</span><select id="pmTaskFilter"><option value="">Create an activity first</option></select></label>
+            </div>
+            <div class="pm-review-toolbar">
+              <input id="pmStudentSearch" type="search" placeholder="Search student name or ID" aria-label="Search project monitoring students">
+              <button id="pmArchiveTask" class="mini-btn pm-archive-btn" type="button" disabled>Archive Activity</button>
+            </div>
+            <div id="pmSummary" class="pm-summary" aria-live="polite"></div>
+            <div id="pmAdminStatus" class="admin-status" role="status" aria-live="polite"></div>
+            <div id="pmStudentList" class="pm-student-list" aria-live="polite"><p class="pm-muted">Open Project Monitoring to load review records.</p></div>
           </article>
         </div>
       </section>

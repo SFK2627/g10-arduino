@@ -7837,3 +7837,48 @@ button {
 .tc-roster-state.tc-state-warning {background:#fff1d8;color:#8c5b10;}
 .tc-student-id-note {color:#6c7380;font-size:.73rem;line-height:1.45;}
 @media(max-width:620px){.tc-roster-login{max-width:50%;}.tc-roster-row{gap:7px;}.tc-roster-row strong{font-size:.79rem;}}
+
+
+/* Tinkercad Project Monitoring — teacher-maintained review tracker (v31) */
+.pm-page-heading,.pm-student-projects-head {display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 18px}
+.pm-page-heading h3,.pm-student-projects h3 {margin:3px 0 6px;font-size:clamp(1.1rem,2vw,1.5rem)}
+.pm-page-heading p,.pm-student-projects-head p{font-size:.86rem;color:#646b76;line-height:1.6;margin:0;max-width:700px}
+.pm-external-link{text-decoration:none;white-space:nowrap;display:inline-flex;align-items:center}
+.pm-admin-layout{display:grid;grid-template-columns:minmax(270px,.78fr) minmax(350px,1.4fr);gap:18px;align-items:start}
+.pm-admin-layout>.panel{min-width:0}
+.pm-muted{font-size:.8rem;color:#687280;line-height:1.6}
+.pm-task-panel>h3,.pm-review-panel h3{margin:2px 0 4px}
+.pm-form-grid,.pm-filter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pm-filter-grid{grid-template-columns:1fr 1fr}
+.pm-task-choice{grid-column:1/-1}
+.pm-form-grid label,.pm-filter-grid label,.pm-review-editor label{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pm-form-grid label>span,.pm-filter-grid label>span,.pm-review-editor label>span{font-size:.7rem;font-weight:800;color:#5b6676}
+.pm-form-grid select,.pm-filter-grid select,.pm-review-toolbar input,.pm-review-editor textarea,.pm-review-editor select {width:100%;min-width:0;padding:10px;border:1px solid #d9dce2;border-radius:10px;background:#fff;color:#20252e;font:inherit;font-size:.85rem}
+.pm-review-editor textarea{resize:vertical;min-height:58px;line-height:1.4}
+.pm-review-head,.pm-review-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pm-review-toolbar{margin:15px 0 12px}.pm-review-toolbar input{flex:1;max-width:370px}
+.pm-archive-btn{color:#a02231;flex-shrink:0}
+.pm-summary{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:12px 0}
+.pm-summary>span:first-child{font-weight:850;font-size:.8rem;padding:7px 10px}
+.pm-chip{display:inline-flex;padding:6px 10px;border-radius:999px;font-weight:850;font-size:.69rem;white-space:nowrap;background:#edf0f4;color:#435269}
+.pm-chip.pm-for-checking{background:#fff2d9;color:#87580c}
+.pm-chip.pm-checked{background:#e0f3e8;color:#13663a}
+.pm-chip.pm-needs-revision{background:#ffebec;color:#a42231}
+.pm-student-list{display:flex;flex-direction:column;gap:11px;max-height:650px;overflow:auto}
+.pm-review-row{border:1px solid #e2e5ea;background:#fff;border-radius:14px;padding:13px}
+.pm-review-person{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.pm-review-person>div{min-width:0}.pm-review-person strong,.pm-review-person small{display:block;overflow-wrap:anywhere}
+.pm-review-person strong{font-size:.9rem}.pm-review-person small{font-size:.76rem;color:#6b7280;margin-top:3px}
+.pm-number{border-radius:50%;background:#f2f3f6;width:30px;height:30px;display:grid;place-items:center;font-size:.75rem;font-weight:900;flex:none}
+.pm-review-editor{display:grid;grid-template-columns:minmax(125px,.85fr) minmax(180px,1.5fr) auto;gap:9px;align-items:end}
+.pm-save-review{white-space:nowrap;min-height:40px}
+.pm-student-projects{max-width:940px;margin:25px auto 8px}
+.pm-student-review-list{display:flex;flex-direction:column;gap:10px}
+.pm-student-review-card{background:#fff;border:1px solid #e4e7ec;border-radius:14px;padding:16px 18px}
+.pm-student-review-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.pm-student-review-card-head h4{margin:0;font-size:.93rem;line-height:1.45;overflow-wrap:anywhere}
+.pm-feedback-note{padding:11px 12px;background:#f5f6f8;border-radius:9px;font-size:.82rem;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.pm-review-date,.pm-review-disclaimer{display:block;margin-top:10px;color:#6a7280;font-size:.74rem}
+@media(max-width:1100px){.pm-admin-layout{grid-template-columns:1fr}}
+@media(max-width:730px){.pm-review-editor{grid-template-columns:1fr 1fr}.pm-save-review{grid-column:1/-1}.pm-page-heading,.pm-student-projects-head{flex-direction:column;align-items:stretch}.pm-external-link{align-self:flex-start}}
+@media(max-width:430px){.pm-form-grid,.pm-filter-grid,.pm-review-editor{grid-template-columns:1fr}.pm-task-choice,.pm-save-review{grid-column:auto}.pm-review-toolbar{flex-direction:column;align-items:stretch}.pm-review-toolbar input{max-width:none}.pm-student-review-card-head{align-items:flex-start;flex-direction:column}}

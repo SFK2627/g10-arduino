@@ -12,6 +12,15 @@
   let cachedStudentProfiles = [];
   let tinkercadClassConfig = null;
   let tinkercadLoadingSerial = 0;
+  let pmActivities = [];
+  let pmReviewMap = new Map();
+  let pmDisplayStudents = [];
+  let pmLoadSerial = 0;
+  let pmInitialized = false;
+  const PM_STATUSES = {
+    "not-reviewed": "Not Reviewed", "for-checking": "For Checking",
+    "checked": "Checked", "needs-revision": "Needs Revision"
+  };
 
   let complianceSettingsCache = null;
   let activeComplianceTaskGroup = "ww";
@@ -160,6 +169,25 @@
     $("#tcAdminSection").addEventListener("change", renderTinkercadRoster);
     $("#tcAdminRefreshBtn").addEventListener("click", () => loadTinkercadManager(true));
 
+    $("#pmTaskForm").addEventListener("submit", createProjectMonitoringActivity);
+    $("#pmRefresh").addEventListener("click", () => loadProjectMonitoring(true));
+    $("#pmArchiveTask").addEventListener("click", archiveProjectMonitoringActivity);
+    $("#pmTermFilter").addEventListener("change", () => renderProjectTaskOptions());
+    $("#pmSectionFilter").addEventListener("change", () => renderProjectTaskOptions());
+    $("#pmTaskFilter").addEventListener("change", () => loadProjectReviewRecords());
+    $("#pmStudentSearch").addEventListener("input", renderProjectReviewStudents);
+    $("#pmStudentList").addEventListener("click", saveProjectReviewFromList);
+    $("#pmStudentList").addEventListener("input", event => {
+      const row = event.target.closest("[data-pm-uid]");
+      const button = row?.querySelector("[data-pm-save]");
+      if (button && !button.disabled) button.textContent = "SAVE & NEXT →";
+    });
+    $("#pmStudentList").addEventListener("change", event => {
+      if (!event.target.matches("[data-pm-status]")) return;
+      const button = event.target.closest("[data-pm-uid]")?.querySelector("[data-pm-save]");
+      if (button && !button.disabled) button.textContent = "SAVE & NEXT →";
+    });
+
     $$("[data-close-student-password-reset]").forEach(el => {
       el.addEventListener("click", closeStudentPasswordResetModal);
     });
@@ -242,6 +270,7 @@
     if (page === "activities") await loadAdminActivities();
     if (page === "students") await loadStudents();
     if (page === "tinkercad") await loadTinkercadManager();
+    if (page === "project-monitor") await loadProjectMonitoring();
     if (page === "sync") await loadComplianceSetup();
   }
 
@@ -2577,6 +2606,226 @@
   }
 
 
+
+  // Manual Tinkercad project REVIEW tracker. This never reads Autodesk projects.
+  // Private reviews are keyed by taskId and the authenticated student's UID.
+  function pmCleanSection(value) {
+    return normalizeSectionName(value);
+  }
+
+  function pmFillSectionOptions() {
+    const sections = [...new Set(cachedStudentProfiles.map(s => pmCleanSection(s.section)).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b));
+    for (const [id, allValue, allLabel] of [
+      ["pmTaskSection", "ALL_SECTIONS", "All Sections"],
+      ["pmSectionFilter", "*", "All Sections"]
+    ]) {
+      const select = $(`#${id}`);
+      const old = select.value;
+      select.innerHTML = `<option value="${allValue}">${allLabel}</option>` +
+        sections.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+      if (sections.includes(old)) select.value = old;
+    }
+  }
+
+  async function loadProjectMonitoring(force = false) {
+    const serial = ++pmLoadSerial;
+    const panel = $("#pmStudentList");
+    panel.innerHTML = '<p class="pm-muted">Loading activity and student records…</p>';
+    try {
+      if (force || !cachedStudentProfiles.length) await loadStudents();
+      if (serial !== pmLoadSerial) return;
+      pmFillSectionOptions();
+      if (!pmInitialized) {
+        $("#pmTermFilter").value = String($("#settingCurrentTerm")?.value || 1);
+        $("#pmTaskTerm").value = $("#pmTermFilter").value;
+        pmInitialized = true;
+      }
+      const snap = await db.collection("tinkercadProjectTasks").get();
+      if (serial !== pmLoadSerial) return;
+      pmActivities = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(task => task.active !== false)
+        .sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+      renderProjectTaskOptions();
+      setStatus("#pmAdminStatus", "", null);
+    } catch (err) {
+      if (serial !== pmLoadSerial) return;
+      panel.textContent = "Could not load project monitoring. Check Firestore Rules and connection.";
+      setStatus("#pmAdminStatus", err.message || "Unable to load project review data.", false);
+    }
+  }
+
+  function renderProjectTaskOptions(preferredId = "") {
+    const term = Number($("#pmTermFilter").value);
+    const section = $("#pmSectionFilter").value;
+    const select = $("#pmTaskFilter");
+    const old = preferredId || select.value;
+    const visible = pmActivities.filter(task => Number(task.term) === term &&
+      (section === "*" || task.section === "ALL_SECTIONS" || pmCleanSection(task.section) === section));
+    select.innerHTML = visible.length
+      ? visible.map(task => `<option value="${escapeHtml(task.id)}">${escapeHtml(task.title || "Untitled")} · ${escapeHtml(task.section === "ALL_SECTIONS" ? "All Sections" : task.section || "All Sections")}</option>`).join("")
+      : '<option value="">No activities in this term/section</option>';
+    if (visible.some(task => task.id === old)) select.value = old;
+    $("#pmArchiveTask").disabled = !select.value;
+    void loadProjectReviewRecords();
+  }
+
+  async function createProjectMonitoringActivity(event) {
+    event.preventDefault();
+    const title = $("#pmTaskTitle").value.trim().replace(/\s+/g, " ");
+    const term = Number($("#pmTaskTerm").value);
+    const section = $("#pmTaskSection").value;
+    if (title.length < 3 || title.length > 100 || ![1, 2, 3].includes(term) || !section) {
+      return setStatus("#pmTaskMessage", "Enter a title (3–100 characters), term and valid section.", false);
+    }
+    if (pmActivities.some(task => Number(task.term) === term && task.section === section &&
+      String(task.title || "").trim().toLowerCase() === title.toLowerCase())) {
+      return setStatus("#pmTaskMessage", "This activity already exists for the selected term and section.", false);
+    }
+    const button = $("#pmCreateTaskBtn");
+    setBusy(button, true, "CREATING…");
+    try {
+      const ref = db.collection("tinkercadProjectTasks").doc();
+      await ref.set({ title, term, section, active: true,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        createdBy: admin.uid || "" });
+      $("#pmTaskTitle").value = "";
+      $("#pmTermFilter").value = String(term);
+      $("#pmSectionFilter").value = section === "ALL_SECTIONS" ? "*" : section;
+      await loadProjectMonitoring(true);
+      renderProjectTaskOptions(ref.id);
+      setStatus("#pmTaskMessage", `Created “${title}”. Review students below.`, true);
+    } catch (err) {
+      setStatus("#pmTaskMessage", err.message || "Could not save activity.", false);
+    } finally {
+      setBusy(button, false, "CREATE ACTIVITY");
+    }
+  }
+
+  async function archiveProjectMonitoringActivity() {
+    const taskId = $("#pmTaskFilter").value;
+    const task = pmActivities.find(item => item.id === taskId);
+    if (!task || !confirm(`Archive “${task.title}”? It will disappear from student review lists, but prior teacher review records will remain in Firestore.`)) return;
+    const button = $("#pmArchiveTask");
+    button.disabled = true;
+    try {
+      await db.collection("tinkercadProjectTasks").doc(taskId).update({
+        active: false, archivedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      await loadProjectMonitoring(true);
+      setStatus("#pmAdminStatus", "Activity archived. Prior review records are retained.", true);
+    } catch (err) {
+      setStatus("#pmAdminStatus", err.message || "Archive failed.", false);
+      button.disabled = false;
+    }
+  }
+
+  async function loadProjectReviewRecords() {
+    const serial = ++pmLoadSerial;
+    const taskId = $("#pmTaskFilter").value;
+    const task = pmActivities.find(item => item.id === taskId);
+    const target = $("#pmStudentList");
+    pmReviewMap = new Map();
+    if (!task) {
+      pmDisplayStudents = [];
+      $("#pmSummary").textContent = "";
+      target.innerHTML = '<p class="pm-muted">Create or select an activity to review students.</p>';
+      $("#pmArchiveTask").disabled = true;
+      return;
+    }
+    $("#pmArchiveTask").disabled = false;
+    target.innerHTML = '<p class="pm-muted">Loading student review statuses…</p>';
+    try {
+      // One query per activity, not one query per student.
+      const snap = await db.collection("tinkercadProjectReviews").doc(taskId).collection("students").get();
+      if (serial !== pmLoadSerial) return;
+      pmReviewMap = new Map(snap.docs.map(doc => [doc.id, doc.data()]));
+      renderProjectReviewStudents();
+    } catch (err) {
+      if (serial !== pmLoadSerial) return;
+      target.textContent = "Cannot read project review records.";
+      setStatus("#pmAdminStatus", err.message || "Review read failed.", false);
+    }
+  }
+
+  function renderProjectReviewStudents() {
+    const task = pmActivities.find(item => item.id === $("#pmTaskFilter").value);
+    if (!task) return;
+    const section = $("#pmSectionFilter").value;
+    const search = String($("#pmStudentSearch").value || "").trim().toLowerCase();
+    pmDisplayStudents = cachedStudentProfiles.filter(s => {
+      const ownSection = pmCleanSection(s.section);
+      return (task.section === "ALL_SECTIONS" || ownSection === pmCleanSection(task.section)) &&
+        (section === "*" || ownSection === section) &&
+        (!search || `${s.fullName || ""} ${s.studentId || ""} ${ownSection}`.toLowerCase().includes(search));
+    }).sort((a,b) => String(a.fullName || a.studentId || "").localeCompare(String(b.fullName || b.studentId || "")));
+    const counts = { "not-reviewed": 0, "for-checking": 0, "checked": 0, "needs-revision": 0 };
+    pmDisplayStudents.forEach(student => {
+      const state = pmReviewMap.get(student.uid)?.status;
+      counts[PM_STATUSES[state] ? state : "not-reviewed"]++;
+    });
+    $("#pmSummary").innerHTML = `<span>${pmDisplayStudents.length} students</span>` +
+      Object.entries(counts).map(([status, count]) => `<span class="pm-chip pm-${status}">${escapeHtml(PM_STATUSES[status])}: ${count}</span>`).join("");
+    $("#pmStudentList").innerHTML = pmDisplayStudents.length ? pmDisplayStudents.map((student, index) => {
+      const review = pmReviewMap.get(student.uid) || {};
+      const status = PM_STATUSES[review.status] ? review.status : "not-reviewed";
+      const options = Object.entries(PM_STATUSES).map(([key, label]) =>
+        `<option value="${key}" ${key === status ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
+      return `<article class="pm-review-row" data-pm-uid="${escapeHtml(student.uid)}">
+        <div class="pm-review-person"><span class="pm-number">${index + 1}</span><div><strong>${escapeHtml(student.fullName || student.studentId || "Student")}</strong><small>${escapeHtml(student.studentId || "No Student ID")} · ${escapeHtml(student.section || "Unknown section")}</small></div></div>
+        <div class="pm-review-editor"><label><span>Status</span><select data-pm-status aria-label="Review status for ${escapeHtml(student.fullName || student.studentId || "student")}">${options}</select></label>
+          <label><span>Teacher feedback (optional)</span><textarea data-pm-note rows="2" maxlength="500" placeholder="e.g. Check resistor wiring">${escapeHtml(review.note || "")}</textarea></label>
+          <button class="mini-btn pm-save-review" type="button" data-pm-save="${escapeHtml(student.uid)}">SAVE & NEXT →</button></div>
+      </article>`;
+    }).join("") : '<p class="pm-muted">No students match these filters.</p>';
+  }
+
+  async function saveProjectReviewFromList(event) {
+    const button = event.target.closest("[data-pm-save]");
+    if (!button) return;
+    const taskId = $("#pmTaskFilter").value;
+    const task = pmActivities.find(item => item.id === taskId);
+    const uid = button.dataset.pmSave;
+    const student = pmDisplayStudents.find(item => item.uid === uid);
+    const row = button.closest("[data-pm-uid]");
+    if (!task || !student || !row) return;
+    const status = row.querySelector("[data-pm-status]").value;
+    const note = row.querySelector("[data-pm-note]").value.trim();
+    if (!PM_STATUSES[status] || note.length > 500) return;
+    const nextRow = row.nextElementSibling;
+    setBusy(button, true, "SAVING…");
+    try {
+      await db.collection("tinkercadProjectReviews").doc(taskId).collection("students").doc(uid).set({
+        taskId, studentUid: uid, status, note,
+        reviewedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        reviewedBy: admin.uid || ""
+      });
+      // The administrator might have changed activities while the write ran.
+      // Never redraw a different activity's counts or status after that.
+      if (taskId !== $("#pmTaskFilter").value) return;
+      pmReviewMap.set(uid, { status, note });
+      setStatus("#pmAdminStatus", `Saved: ${student.fullName || student.studentId} — ${PM_STATUSES[status]}.`, true);
+      // Recompute counts but don't recreate the rows: preserve the teacher's
+      // unsaved feedback and status selections elsewhere in this activity.
+      const counts = { "not-reviewed": 0, "for-checking": 0, "checked": 0, "needs-revision": 0 };
+      pmDisplayStudents.forEach(s => {
+        const state = pmReviewMap.get(s.uid)?.status;
+        counts[PM_STATUSES[state] ? state : "not-reviewed"]++;
+      });
+      $("#pmSummary").innerHTML = `<span>${pmDisplayStudents.length} students</span>` +
+        Object.entries(counts).map(([key, count]) => `<span class="pm-chip pm-${key}">${escapeHtml(PM_STATUSES[key])}: ${count}</span>`).join("");
+      button.textContent = "SAVED ✓";
+      button.disabled = false;
+      if (nextRow?.matches("[data-pm-uid]")) {
+        nextRow.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        nextRow.querySelector("[data-pm-status]")?.focus({ preventScroll: true });
+      }
+    } catch (err) {
+      setStatus("#pmAdminStatus", err.message || "Could not save the student's review.", false);
+      button.disabled = false;
+      button.textContent = "RETRY SAVE";
+    }
+  }
 
   // Tinkercad seats are created in the official Tinkercad teacher account.
   // The portal stores ONE classroom link; student nicknames are the existing
