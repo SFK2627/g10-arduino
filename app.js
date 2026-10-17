@@ -281,11 +281,13 @@
 
   let studentReminderTracks = [];
   let studentReminderTrackIndex = -1;
+  let studentReminderShuffle = true;
 
   function studentReminderSettings() {
     return {
       enabled: settings?.loginReminderEnabled !== false,
       musicEnabled: settings?.loginReminderMusicEnabled === true,
+      musicShuffle: settings?.loginReminderMusicShuffle !== false,
       musicUrls: G10MusicPlaylist.normalize(
         Array.isArray(settings?.loginReminderMusicUrls) && settings.loginReminderMusicUrls.length
           ? settings.loginReminderMusicUrls : [settings?.loginReminderMusicUrl || ""]
@@ -340,7 +342,7 @@
       void startLoginReminderAudio(
         $("#studentLoginReminderAudio"),
         $("#studentLoginReminderPlayMusicBtn"),
-        reminder.musicUrls
+        reminder.musicUrls, reminder.musicShuffle
       );
     } else {
       stopLoginReminderAudio(
@@ -435,18 +437,22 @@
     }).join("");
   }
 
-  async function startLoginReminderAudio(audio, playButton, urls) {
+  async function startLoginReminderAudio(audio, playButton, urls, shuffleEnabled) {
     stopLoginReminderAudio(audio, playButton);
     if (!audio || !playButton) return;
-    studentReminderTracks = G10MusicPlaylist.normalize(urls);
+    studentReminderShuffle = shuffleEnabled !== false;
+    const initial = G10MusicPlaylist.startPlayback(urls, studentReminderShuffle);
+    studentReminderTracks = initial.tracks;
+    studentReminderTrackIndex = initial.index;
     if (!studentReminderTracks.length) return;
 
-    // Random starting track for variety at each login; then sequential play.
-    studentReminderTrackIndex = Math.floor(Math.random() * studentReminderTracks.length);
     audio.onended = () => {
       if ($("#studentLoginReminderModal").classList.contains("hidden")) return;
-      studentReminderTrackIndex =
-        (studentReminderTrackIndex + 1) % studentReminderTracks.length;
+      const next = G10MusicPlaylist.advancePlayback(
+        studentReminderTracks, studentReminderTrackIndex, studentReminderShuffle
+      );
+      studentReminderTracks = next.tracks;
+      studentReminderTrackIndex = next.index;
       void playStudentReminderCurrentTrack();
     };
     await playStudentReminderCurrentTrack();
@@ -479,7 +485,7 @@
       await startLoginReminderAudio(
         $("#studentLoginReminderAudio"),
         $("#studentLoginReminderPlayMusicBtn"),
-        reminder.musicUrls
+        reminder.musicUrls, reminder.musicShuffle
       );
     } else {
       await playStudentReminderCurrentTrack();

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121316">
   <title>Admin • MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css?v=32-bulk-reminder-music">
+  <link rel="stylesheet" href="styles.css?v=33-music-shuffle">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -21,11 +21,11 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js?v=32-bulk-reminder-music"></script>
-  <script defer src="data-service.js?v=32-bulk-reminder-music"></script>
-  <script defer src="music-playlist.js?v=32-bulk-reminder-music"></script>
-  <script defer src="admin.js?v=32-bulk-reminder-music"></script>
-  <script defer src="pwa.js?v=32-bulk-reminder-music"></script>
+  <script defer src="demo-data.js?v=33-music-shuffle"></script>
+  <script defer src="data-service.js?v=33-music-shuffle"></script>
+  <script defer src="music-playlist.js?v=33-music-shuffle"></script>
+  <script defer src="admin.js?v=33-music-shuffle"></script>
+  <script defer src="pwa.js?v=33-music-shuffle"></script>
 </head>
 <body>
   <section id="adminLoginView" class="admin-login">
@@ -188,8 +188,13 @@
               <div class="reminder-music-library">
                 <div class="reminder-music-head">
                   <strong>Background Music Playlist</strong>
-                  <small>Direct audio/JukeHost URLs only. The reminder plays one track and moves to the next when it ends.</small>
+                  <small>Direct audio/JukeHost URLs only. The reminder plays each track and continues to the next while the modal is open.</small>
                 </div>
+                <label class="check-row reminder-setting-check reminder-shuffle-toggle">
+                  <input id="settingLoginReminderMusicShuffle" type="checkbox" checked>
+                  <span>Random Shuffle (ON/OFF)</span>
+                </label>
+                <small class="reminder-shuffle-description" id="loginReminderShuffleDescription" aria-live="polite">ON: Plays all tracks in a random order before repeating. No repeat until the playlist finishes.</small>
                 <label>
                   <span>Add One Music URL</span>
                   <input id="settingLoginReminderMusicUrl" type="url" placeholder="https://audio.jukehost.co.uk/...">

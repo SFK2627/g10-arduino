@@ -80,5 +80,35 @@
     return { urls: start, added, duplicates, excess };
   }
 
-  root.G10MusicPlaylist = { extract, normalize, merge, validUrl, MAX_TRACKS };
+  // Fisher-Yates shuffle: all tracks play once before any repeats.
+  // A newly shuffled cycle doesn't immediately repeat the previous last track.
+  function playbackOrder(urls, shuffle, lastPlayed = "", random = Math.random) {
+    const tracks = normalize(urls);
+    if (!shuffle || tracks.length <= 1) return tracks;
+    for (let i = tracks.length - 1; i > 0; i--) {
+      const j = Math.max(0, Math.min(i, Math.floor(random() * (i + 1))));
+      [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
+    }
+    if (tracks[0] === lastPlayed) {
+      [tracks[0], tracks[1]] = [tracks[1], tracks[0]];
+    }
+    return tracks;
+  }
+
+  function startPlayback(urls, shuffle, random = Math.random) {
+    const tracks = playbackOrder(urls, shuffle, "", random);
+    return { tracks, index: tracks.length ? 0 : -1 };
+  }
+
+  function advancePlayback(tracks, index, shuffle, random = Math.random) {
+    if (!tracks.length) return { tracks: [], index: -1 };
+    if (index + 1 < tracks.length) return { tracks, index: index + 1 };
+    if (!shuffle) return { tracks, index: 0 };
+    const newOrder = playbackOrder(tracks, true, tracks[tracks.length - 1], random);
+    return { tracks: newOrder, index: 0 };
+  }
+
+  root.G10MusicPlaylist = {
+    extract, normalize, merge, validUrl, startPlayback, advancePlayback, MAX_TRACKS
+  };
 })(typeof window !== "undefined" ? window : globalThis);

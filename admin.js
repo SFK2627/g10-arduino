@@ -12,6 +12,7 @@
   let loginReminderMusicPlaylist = [];
   let adminReminderPreviewTracks = [];
   let adminReminderPreviewTrackIndex = -1;
+  let adminReminderPreviewShuffle = true;
   let cachedStudentProfiles = [];
   let tinkercadClassConfig = null;
   let tinkercadLoadingSerial = 0;
@@ -89,6 +90,7 @@
 
     $("#settingsForm").addEventListener("submit", saveSettings);
     $("#settingLoginReminderMusicEnabled").addEventListener("change", updateLoginReminderAdminControls);
+    $("#settingLoginReminderMusicShuffle").addEventListener("change", updateLoginReminderShuffleDescription);
     $("#settingLoginReminderBulkMusic").addEventListener("input", updateMusicBulkDetection);
     $("#loginReminderAddSingleMusicBtn").addEventListener("click", addSingleMusicLink);
     $("#loginReminderAddBulkMusicBtn").addEventListener("click", addBulkMusicLinks);
@@ -453,6 +455,10 @@
 
     $("#settingLoginReminderMusicEnabled").checked =
       data.loginReminderMusicEnabled === true;
+    // Legacy playlists had random starting tracks: preserve that default.
+    $("#settingLoginReminderMusicShuffle").checked =
+      data.loginReminderMusicShuffle !== false;
+    updateLoginReminderShuffleDescription();
 
     // Keep backwards compatibility with the original single-song setting.
     loginReminderMusicPlaylist = G10MusicPlaylist.normalize(
@@ -500,6 +506,7 @@
 
         loginReminderEnabled: $("#settingLoginReminderEnabled").checked,
         loginReminderMusicEnabled: $("#settingLoginReminderMusicEnabled").checked,
+        loginReminderMusicShuffle: $("#settingLoginReminderMusicShuffle").checked,
         loginReminderMusicUrl: mergedMusic.urls[0] || "", // legacy clients
         loginReminderMusicUrls: mergedMusic.urls,
         loginReminderPositiveMessage:
@@ -528,6 +535,13 @@
   function updateLoginReminderAdminControls() {
     // Keep the playlist editor editable even while background music is OFF.
     // This allows the teacher to prepare a playlist before enabling playback.
+  }
+
+  function updateLoginReminderShuffleDescription() {
+    const enabled = $("#settingLoginReminderMusicShuffle").checked;
+    $("#loginReminderShuffleDescription").textContent = enabled
+      ? "ON: Plays all tracks in a random order before repeating. No repeat until the playlist finishes."
+      : "OFF: Plays in the playlist order, starting at track 1, then repeats from the beginning.";
   }
 
   function renderMusicPlaylist() {
@@ -678,22 +692,27 @@
     const musicUrls = currentPreviewMusicTracks();
 
     if (musicEnabled && musicUrls.length) {
-      await startAdminReminderPreviewAudio(musicUrls);
+      await startAdminReminderPreviewAudio(musicUrls, $("#settingLoginReminderMusicShuffle").checked);
     } else {
       stopAdminReminderPreviewAudio();
     }
   }
 
-  async function startAdminReminderPreviewAudio(urls) {
+  async function startAdminReminderPreviewAudio(urls, shuffleEnabled) {
     stopAdminReminderPreviewAudio();
-    adminReminderPreviewTracks = G10MusicPlaylist.normalize(urls);
+    adminReminderPreviewShuffle = shuffleEnabled !== false;
+    const initial = G10MusicPlaylist.startPlayback(urls, adminReminderPreviewShuffle);
+    adminReminderPreviewTracks = initial.tracks;
+    adminReminderPreviewTrackIndex = initial.index;
     if (!adminReminderPreviewTracks.length) return;
-    adminReminderPreviewTrackIndex = Math.floor(Math.random() * adminReminderPreviewTracks.length);
     const audio = $("#adminLoginReminderPreviewAudio");
     audio.onended = () => {
       if ($("#adminLoginReminderPreviewModal").classList.contains("hidden")) return;
-      adminReminderPreviewTrackIndex =
-        (adminReminderPreviewTrackIndex + 1) % adminReminderPreviewTracks.length;
+      const next = G10MusicPlaylist.advancePlayback(
+        adminReminderPreviewTracks, adminReminderPreviewTrackIndex, adminReminderPreviewShuffle
+      );
+      adminReminderPreviewTracks = next.tracks;
+      adminReminderPreviewTrackIndex = next.index;
       void playAdminPreviewCurrentTrack();
     };
     await playAdminPreviewCurrentTrack();
@@ -718,7 +737,9 @@
 
   async function playAdminReminderPreviewMusic() {
     if (!adminReminderPreviewTracks.length) {
-      await startAdminReminderPreviewAudio(currentPreviewMusicTracks());
+      await startAdminReminderPreviewAudio(
+        currentPreviewMusicTracks(), $("#settingLoginReminderMusicShuffle").checked
+      );
       return;
     }
     await playAdminPreviewCurrentTrack();

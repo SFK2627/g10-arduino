@@ -1,17 +1,17 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v32-bulk-reminder-music";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v33-music-shuffle";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=32-bulk-reminder-music",
+  "./styles.css?v=33-music-shuffle",
   "./firebase-config.js",
-  "./demo-data.js?v=32-bulk-reminder-music",
-  "./data-service.js?v=32-bulk-reminder-music",
-  "./music-playlist.js?v=32-bulk-reminder-music",
-  "./app.js?v=32-bulk-reminder-music",
-  "./admin.js?v=32-bulk-reminder-music",
-  "./pwa.js?v=32-bulk-reminder-music",
+  "./demo-data.js?v=33-music-shuffle",
+  "./data-service.js?v=33-music-shuffle",
+  "./music-playlist.js?v=33-music-shuffle",
+  "./app.js?v=33-music-shuffle",
+  "./admin.js?v=33-music-shuffle",
+  "./pwa.js?v=33-music-shuffle",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
