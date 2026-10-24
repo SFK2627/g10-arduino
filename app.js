@@ -336,6 +336,7 @@
 
     $("#studentLoginReminderModal").classList.remove("hidden");
     document.body.classList.add("modal-open");
+    animateStudentGradeTrend("studentReminderGrade");
 
     if (reminder.musicEnabled && reminder.musicUrls.length) {
       // Autoplay is optional and must never delay or block modal display.
@@ -1017,6 +1018,10 @@
 
     $$(".page").forEach(p => p.classList.remove("active-page"));
     $(`#page-${page}`).classList.add("active-page");
+    // If the grade arrived while this page was hidden, reveal its arrow once
+    // when the student first opens the card.
+    if (page === "dashboard") animateStudentGradeTrend("dashboardGrade");
+    if (page === "compliance") animateStudentGradeTrend("complianceGrade");
 
     $$(".nav-btn, .mobile-nav-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.page === page);
@@ -1329,6 +1334,40 @@
     }
   }
 
+  // Animate only the first visible appearance of a valid grade movement.
+  // The animation never changes the underlying comparison or grade value.
+  const animatedStudentGradeTrends = new Set();
+
+  function animateStudentGradeTrend(prefix) {
+    const pill = $(`#${prefix}Trend`);
+    const trend = pill?.dataset.trend;
+    if (!pill || !["improved", "declined", "unchanged"].includes(trend)) return;
+    if (pill.classList.contains("hidden") || !pill.getClientRects().length) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+    const key = `${profile?.studentId || "student"}:${currentTerm}:${prefix}:${trend}`;
+    if (animatedStudentGradeTrends.has(key)) return;
+
+    // Remove the animation class after the arrow settles so reopening a
+    // hidden Dashboard/Compliance page does not replay a completed animation.
+    if (!pill.dataset.trendAnimationCleanupBound) {
+      pill.addEventListener("animationend", event => {
+        if (event.target?.classList?.contains("grade-trend-arrow")) {
+          pill.classList.remove("grade-trend-animate");
+        }
+      });
+      pill.dataset.trendAnimationCleanupBound = "true";
+    }
+
+    // Animate after the modal/card has actually become visible.
+    window.requestAnimationFrame(() => {
+      if (!pill.isConnected || !pill.getClientRects().length ||
+          pill.dataset.trend !== trend || animatedStudentGradeTrends.has(key)) return;
+      animatedStudentGradeTrends.add(key);
+      pill.classList.add("grade-trend-animate");
+    });
+  }
+
   /** This is a display of the last published grade, not a live recalculation. */
   function gradeAsOfLabel(record) {
     const published = record?.publishedAt || record?.lastUpdated;
@@ -1381,7 +1420,10 @@
     const pill = $(`#${prefix}Trend`);
     if (pill) {
       const trend = loadError ? null : G10GradeTrend.forDisplay(record, currentTerm);
+      const oldTrend = pill.dataset.trend || "";
+      const changed = oldTrend !== trend || pill.dataset.term !== String(currentTerm);
       pill.classList.remove("improved", "declined", "unchanged", "unavailable");
+      if (changed) pill.classList.remove("grade-trend-animate");
       const options = {
         improved: { symbol: "↑", label: "Improved" },
         declined: { symbol: "↓", label: "Declined" },
@@ -1389,15 +1431,32 @@
         unavailable: { symbol: "—", label: "No comparison" }
       };
       const detail = trend ? options[trend] : null;
+      pill.dataset.trend = detail ? trend : "";
+      pill.dataset.term = String(currentTerm);
       pill.classList.toggle("hidden", !detail);
-      pill.textContent = detail ? `${detail.symbol} ${detail.label}` : "";
+      // Reusing the arrow node prevents the CSS animation from replaying
+      // when the same grade is fetched again during one portal session.
+      if (changed || !pill.firstElementChild) {
+        pill.replaceChildren();
+        if (detail) {
+          const arrow = document.createElement("span");
+          arrow.className = "grade-trend-arrow";
+          arrow.setAttribute("aria-hidden", "true");
+          arrow.textContent = detail.symbol;
+          const label = document.createElement("span");
+          label.className = "grade-trend-text";
+          label.textContent = detail.label;
+          pill.append(arrow, label);
+        }
+      }
+      if (detail) pill.classList.add(trend);
       pill.title = detail ? (trend === "unavailable"
         ? `No valid Term ${currentTerm - 1} grade is available for comparison`
         : `${detail.label} compared with Term ${currentTerm - 1}`) : "";
       pill.setAttribute("aria-label", detail ? (trend === "unavailable"
         ? `No valid Term ${currentTerm - 1} grade for comparison`
         : `${detail.label} since Term ${currentTerm - 1}`) : "No previous-term comparison");
-      if (detail) pill.classList.add(trend);
+      animateStudentGradeTrend(prefix);
     }
   }
 

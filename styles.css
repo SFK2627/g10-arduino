@@ -8203,3 +8203,58 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .perf-page .perf-collapse-indicator { transition: none; }
 }
+
+
+/* v38 — Subtle, one-time animated arrows beside student Running Grades.
+   Applies to Login Reminder, Dashboard and Compliance cards only. */
+.grade-trend-pill { gap: 5px; }
+.grade-trend-arrow {
+  display: inline-block;
+  flex: none;
+  font-size: 1.25em;
+  line-height: 1;
+  font-weight: 950;
+  will-change: transform;
+}
+.grade-trend-text { display: inline-block; }
+.grade-trend-pill.grade-trend-animate {
+  animation: g10TrendBadgeReveal 460ms ease-out both;
+}
+.grade-trend-pill.grade-trend-animate.improved .grade-trend-arrow {
+  animation: g10TrendArrowUp 760ms cubic-bezier(.18,.8,.24,1) 80ms both;
+}
+.grade-trend-pill.grade-trend-animate.declined .grade-trend-arrow {
+  animation: g10TrendArrowDown 760ms cubic-bezier(.18,.8,.24,1) 80ms both;
+}
+.grade-trend-pill.grade-trend-animate.unchanged .grade-trend-arrow {
+  animation: g10TrendArrowStill 560ms ease-out 60ms both;
+}
+@keyframes g10TrendBadgeReveal {
+  from { opacity: .35; }
+  to { opacity: 1; }
+}
+@keyframes g10TrendArrowUp {
+  0% { opacity: .45; transform: translateY(7px); }
+  55% { opacity: 1; transform: translateY(-3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes g10TrendArrowDown {
+  0% { opacity: .45; transform: translateY(-7px); }
+  55% { opacity: 1; transform: translateY(3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes g10TrendArrowStill {
+  from { opacity: .3; }
+  to { opacity: 1; }
+}
+@media (max-width: 430px) {
+  .login-reminder-grade .grade-card-value-line { gap: 7px; }
+  .login-reminder-grade .grade-trend-pill { padding: 5px 7px; font-size: .61rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grade-trend-pill.grade-trend-animate,
+  .grade-trend-pill.grade-trend-animate .grade-trend-arrow {
+    animation: none !important;
+    will-change: auto;
+  }
+}
