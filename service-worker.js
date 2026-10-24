@@ -1,18 +1,18 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v34-g10-performance";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v35-grade-movement";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=34-g10-performance",
+  "./styles.css?v=35-grade-movement",
   "./firebase-config.js",
-  "./demo-data.js?v=34-g10-performance",
-  "./data-service.js?v=34-g10-performance",
-  "./music-playlist.js?v=34-g10-performance",
-  "./app.js?v=34-g10-performance",
-  "./performance-analytics.js?v=34-g10-performance",
-  "./admin.js?v=34-g10-performance",
-  "./pwa.js?v=34-g10-performance",
+  "./demo-data.js?v=35-grade-movement",
+  "./data-service.js?v=35-grade-movement",
+  "./music-playlist.js?v=35-grade-movement",
+  "./app.js?v=35-grade-movement",
+  "./performance-analytics.js?v=35-grade-movement",
+  "./admin.js?v=35-grade-movement",
+  "./pwa.js?v=35-grade-movement",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

@@ -58,16 +58,27 @@
     const rows = active.map(s => {
       const stored = snapshots.get(s.uid) || {};
       const now = stored.current || null;
-      const first = Number(term) === 1 ? null : (stored.first || null);
+      const priorTerm = Number(term) - 1;
+      const sheetBaseline = stored.comparison && Number(stored.comparison.previousTerm) === priorTerm
+        ? stored.comparison : null;
+      const previousRecord = Number(term) === 1 ? null
+        : (sheetBaseline || stored.previous || (Number(term) === 2 ? stored.first : null) || null);
       const grade = numericGrade(now);
-      const previous = numericGrade(first);
+      const previous = numericGrade(previousRecord);
       const delta = grade !== null && previous !== null ? Math.round((grade - previous) * 100) / 100 : null;
       const trend = delta === null ? 'unavailable' : delta > 0 ? 'improved' : delta < 0 ? 'declined' : 'unchanged';
+      const source = sheetBaseline ? 'previous-sheet' : (previousRecord ? 'published-previous-term' : 'none');
+      const previousStatus = String(previousRecord?.gradeStatus || '').toUpperCase();
+      const trendReason = Number(term) === 1 ? 'Baseline term'
+        : !now ? 'Current term not published'
+        : grade === null ? 'Current grade unavailable or INC'
+        : previous === null ? (previousStatus === 'INC' ? 'Previous term: INC' : 'Previous grade unavailable')
+        : '';
       return {
         uid: s.uid,
         fullName: String(s.fullName || s.studentId || 'Unnamed student'),
         studentId: String(s.studentId || ''), section: String(s.section || 'Unassigned').trim() || 'Unassigned',
-        published: Boolean(now), grade, previous, delta, trend,
+        published: Boolean(now), grade, previous, delta, trend, trendReason, comparisonSource: source,
         missing: missingCount(now), band: band(grade),
         gradeIncomplete: Boolean(now) && (String(now.gradeStatus || '').toUpperCase() === 'INC' ||
           String(now.gradeType || '').toLowerCase() === 'incomplete'),

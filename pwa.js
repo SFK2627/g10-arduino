@@ -116,7 +116,7 @@
     if (!/^https?:$/.test(location.protocol)) return;
 
     try {
-      await navigator.serviceWorker.register("./service-worker.js?v=34-g10-performance", {
+      await navigator.serviceWorker.register("./service-worker.js?v=35-grade-movement", {
         scope: "./"
       });
     } catch (error) {

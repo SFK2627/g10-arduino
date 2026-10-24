@@ -3455,11 +3455,13 @@
         const group = students.slice(i, i + 18);
         const results = await Promise.all(group.map(async student => {
           const id = G10DataService.normalizeStudentId(student.studentId);
-          if (!id || duplicateIdCounts.get(id) !== 1) return { uid: student.uid, current: null, first: null };
+          if (!id || duplicateIdCounts.get(id) !== 1) return { uid: student.uid, current: null, previous: null, comparison: null };
           const ref = db.collection("studentCompliance").doc(id).collection("terms");
-          const [currentSnap, firstSnap] = await Promise.all([
+          const adminRef = db.collection("adminCompliance").doc(id).collection("terms");
+          const [currentSnap, previousSnap, currentAdminSnap] = await Promise.all([
             ref.doc(`term${term}`).get(),
-            term === 1 ? Promise.resolve(null) : ref.doc("term1").get()
+            term === 1 ? Promise.resolve(null) : ref.doc(`term${term - 1}`).get(),
+            term === 1 ? Promise.resolve(null) : adminRef.doc(`term${term}`).get()
           ]);
           // Protect against stale/foreign records if a Student ID was reused.
           const validData = snap => {
@@ -3468,7 +3470,10 @@
             const storedUid = String(data.studentUid || "").trim();
             return (!storedUid || storedUid === student.uid) ? data : null;
           };
-          return { uid: student.uid, current: validData(currentSnap), first: validData(firstSnap) };
+          const adminData = validData(currentAdminSnap);
+          return { uid: student.uid, current: validData(currentSnap),
+            previous: validData(previousSnap),
+            comparison: adminData?.gradeComparison || null };
         }));
         if (serial !== performanceLoadSerial) return;
         results.forEach(item => snapshots.set(item.uid, item));
@@ -3523,7 +3528,7 @@
       performanceStatCard("TOTAL STUDENTS", all.total, `${model.sections.length} sections`),
       performanceStatCard("PUBLISHED RECORDS", all.published, `${all.total ? (100 * all.published / all.total).toFixed(1) : "0"}% coverage • ${all.notPublished} not published`),
       performanceStatCard("WITH LACKINGS", all.missing, "Published records only"),
-      performanceStatCard("IMPROVED VS TERM 1", model.term === 1 ? "N/A" : all.improved, model.term === 1 ? "Select Term 2 or 3" : `${all.comparable} with comparable grades`)
+      performanceStatCard(model.term === 1 ? "GRADE MOVEMENT" : `IMPROVED VS TERM ${model.term - 1}`, model.term === 1 ? "N/A" : all.improved, model.term === 1 ? "Select Term 2 or 3" : `${all.comparable} comparable • ${all.declined} declined • ${all.unchanged} unchanged`)
     ].join("");
     $("#perfSections").innerHTML = model.sections.map(item => `
       <button type="button" class="perf-section-card ${item.name === performanceSelectedSection ? "is-active" : ""}"
@@ -3552,6 +3557,7 @@
         <strong>${count}</strong></button>`;
     }).join("");
     $("#perfGradeNote").textContent = `${stats.graded} numeric grades included • ${stats.noGrade} published without numeric grade`;
+    $("#perfMovementHeading").textContent = model.term === 1 ? "Grade Movement" : `Grade Movement: Term ${model.term - 1} → Term ${model.term}`;
     $("#perfTrends").innerHTML = model.term === 1
       ? '<p class="perf-muted">Term 1 is the baseline. Select Term 2 or Term 3 to see grade movement.</p>'
       : `<div class="perf-trend-grid">${[
@@ -3560,7 +3566,9 @@
         ["Unchanged", stats.unchanged, "unchanged"]
       ].map(([label, count, type]) => `<div class="perf-trend-${type}"><strong>${count}</strong><small>${label}</small></div>`).join("")}</div>`;
     $("#perfTrendNote").textContent = model.term === 1 ? "No comparisons for the first term." :
-      `${stats.comparable} students with both valid grades; others are not compared.`;
+      `${stats.comparable} compared • ${stats.graded - stats.comparable >= 0 ? stats.graded - stats.comparable : 0} current grades lack valid previous grades. ` +
+      (stats.comparable === 0 && stats.graded ? "If previous-term sheets have grades, redeploy Apps Script, then Sync & Publish the current term." :
+      `Comparison uses the previous term's sheet where available, otherwise the published previous-term record.`);
     const priority = selected.rows.filter(r => r.priority).sort((a,b) =>
       Number(b.trend === "declined") - Number(a.trend === "declined") || (b.missing || 0) - (a.missing || 0) || (a.grade ?? 101) - (b.grade ?? 101));
     $("#perfPriority").innerHTML = priority.length ? priority.map(r => `
@@ -3602,8 +3610,9 @@
         r.grade === null ? 'Not available' : performanceGradeText(r.grade);
       const gradeLabel = r.grade === null ? escapeHtml(gradeText) :
         `${performanceStatusPill(gradeText, `band-${r.band}`)}`;
-      const trendText = r.trend === "unavailable" ? (performanceModel.term === 1 ? 'Baseline' : 'N/A') :
-        `${r.delta > 0 ? '+' : ''}${performanceGradeText(r.delta)} (${r.trend})`;
+      const trendText = r.trend === "unavailable"
+        ? (r.trendReason || "Not comparable")
+        : `${r.trend === 'improved' ? '↑' : r.trend === 'declined' ? '↓' : '→'} ${r.delta > 0 ? '+' : ''}${performanceGradeText(r.delta)} (${r.trend}) • T${performanceModel.term - 1}: ${performanceGradeText(r.previous)}`;
       const missingText = !r.published ? 'Not published' : r.missing === null ? 'Status unavailable' :
         r.missing === 0 ? 'Complete' : `${r.missing} lacking`;
       return `<tr><td><strong>${escapeHtml(r.fullName)}</strong><small>${escapeHtml(r.studentId)} • ${escapeHtml(r.section)}</small></td>
@@ -4829,6 +4838,31 @@
         ? `${sections.length} section(s) • ${totalStudents} student row(s) • ${payload.sheetName || `TERM_${payload.term}`} • ${adminRunningGradeAsOf(payload.previewedAt)}`
         : "No section preview is available.";
 
+    const priorTermIssues = sections.filter(section => Number(payload.term) > 1 && !section.previousTermAvailable);
+    if (priorTermIssues.length) {
+      $("#syncPreviewNote").textContent += ` • WARNING: ${priorTermIssues.length} section(s) have no readable previous-term comparison. See Google Sheet TERM_${Number(payload.term) - 1}.`;
+    } else if (Number(payload.term) > 1 && sections.length) {
+      const movement = { improved: 0, declined: 0, unchanged: 0, unavailable: 0 };
+      for (const section of sections) {
+        for (const row of section.students || []) {
+          const now = row.termGrade;
+          const before = row.previousTermGrade;
+          const comparable = now !== null && now !== undefined && now !== "" &&
+            before !== null && before !== undefined && before !== "" &&
+            Number.isFinite(Number(now)) && Number.isFinite(Number(before)) &&
+            String(row.gradeStatus || "").toUpperCase() !== "INC" &&
+            String(row.previousTermGradeStatus || "").toUpperCase() !== "INC";
+          if (!comparable) { movement.unavailable++; continue; }
+          const delta = Number(now) - Number(before);
+          movement[delta > 0 ? "improved" : delta < 0 ? "declined" : "unchanged"]++;
+        }
+      }
+      $("#syncPreviewNote").textContent +=
+        ` • Term ${Number(payload.term) - 1} → Term ${payload.term}: ` +
+        `${movement.improved} improved, ${movement.declined} declined, ` +
+        `${movement.unchanged} unchanged, ${movement.unavailable} not comparable.`;
+    }
+
     const previewWWMissingBand = sections.reduce((total, section) => total +
       (section.students || []).reduce((count, student) => count +
         (student.tasks || []).filter(t => {
@@ -5208,10 +5242,24 @@
             complianceSchemaVersion: 7
           }, { merge: true });
 
+          // Admin-only previous-term baseline read from the same Google Sheet.
+          // No extra student-facing score data or history is exposed.
+          const gradeComparison = Number(payload.term) > 1 && sectionPayload.previousTermAvailable
+            ? {
+                previousTerm: Number(payload.term) - 1,
+                termGrade: row.previousTermGrade ?? null,
+                gradeStatus: String(row.previousTermGradeStatus || "not-available"),
+                gradeType: String(row.previousTermGradeType || "unavailable"),
+                matchedStudentId: Boolean(row.previousTermGradeFound),
+                source: "previous-term-sheet"
+              }
+            : null;
+
           batch.set(adminRef, {
             ...commonSnapshot,
             tasks: rawTasks,
-            adminComplianceSchemaVersion: 3
+            gradeComparison,
+            adminComplianceSchemaVersion: 4
           }, { merge: true });
 
           pendingWrites += 2;
