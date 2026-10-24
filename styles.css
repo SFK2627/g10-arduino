@@ -8052,3 +8052,154 @@ button {
   .grade-card-value-line { gap: 8px; }
   .grade-trend-pill { font-size: .63rem; padding: 5px 8px; }
 }
+
+
+/* ===============================================================
+   v37 — Section Performance readability & compact mobile layout
+   Scoped to Admin Performance; no grade calculations are changed.
+   =============================================================== */
+.perf-page {
+  --perf-light-text: #25384e;
+  --perf-dark-text: #f2f6fc;
+  --perf-dark-muted: #c4d0df;
+}
+/* Light admin background: use dark, WCAG-readable typography. */
+.perf-page .perf-heading > div:first-child > p:not(.section-kicker),
+.perf-page > .perf-panel-heading p,
+.perf-page > #perfContent > .perf-panel-heading p,
+.perf-page .perf-detail-header .section-kicker,
+.perf-page .perf-heading-actions label,
+.perf-page #perfLastUpdated,
+.perf-page .perf-detail-header h3 { color: #34465b; }
+.perf-page .perf-heading h3, .perf-page > #perfContent > .perf-panel-heading h3 { color: #161e2b; }
+.perf-page .perf-info {
+  color: #273f5a;
+  background: #e9f1fa;
+  border: 1px solid #aec7e3;
+  font-size: .84rem;
+  line-height: 1.55;
+}
+.perf-page .perf-loading { color: #263b53; background: #eaf1f9; border-color: #c1d3e8; }
+/* Dark performance cards: muted text must still be clearly visible. */
+.perf-page .perf-panel, .perf-page .perf-stat-card, .perf-page .perf-section-card { color: #f2f6fc; }
+.perf-page .perf-panel p, .perf-page .perf-panel .perf-muted,
+.perf-page .perf-panel > .perf-collapse-content p,
+.perf-page .perf-panel .perf-panel-heading p,
+.perf-page .perf-panel small, .perf-page .perf-table-mobile-tip { color: #c4d0df; }
+.perf-page .perf-panel h3 { color: #f4f7fb; }
+.perf-page .perf-section-card span, .perf-page .perf-section-card small,
+.perf-page .perf-stat-card span, .perf-page .perf-stat-card small,
+.perf-page .perf-priority-item small { color: #c8d3e0; }
+.perf-page .perf-filters label { color: #dae3ef; }
+.perf-page .perf-students-table th { color: #d6e1ef; }
+.perf-page .perf-students-table td,
+.perf-page .perf-students-table td:first-child small { color: #e2eaf4; }
+.perf-page .perf-grade-row { color: #ecf3fc; }
+.perf-page .perf-grade-row:focus-visible,
+.perf-page .perf-section-card:focus-visible,
+.perf-page .perf-priority-item:focus-visible { outline: 2px solid #8bc2ff; outline-offset: 2px; }
+.perf-page .perf-heading-actions select,
+.perf-page .perf-filters select, .perf-page .perf-filters input {
+  color: #f6f8fc;
+  background: #242b35;
+  border: 1px solid #65768e;
+}
+.perf-page .perf-heading-actions select:focus-visible,
+.perf-page .perf-filters select:focus-visible,
+.perf-page .perf-filters input:focus-visible,
+.perf-page .perf-mobile-section-picker select:focus-visible { outline: 2px solid #287bd4; outline-offset: 2px; }
+.perf-page .perf-panel .perf-row-actions .mini-btn { background: #f8fafc; color: #182b41; border: 1px solid #b8c6d6; }
+.perf-page .perf-panel .perf-row-actions .mini-btn:hover { background: #e5f0ff; }
+.perf-mobile-section-picker, .perf-student-cards, .perf-more-filters-summary,
+.perf-collapse-indicator { display: none; }
+.perf-search-filter { min-width: 0; }
+.perf-page .perf-filters { grid-template-columns: minmax(160px, 1.15fr) minmax(0, 2.85fr); }
+.perf-more-filters { min-width: 0; }
+.perf-filter-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.perf-filter-options > label { min-width: 0; }
+.perf-collapse-summary { display: flex; justify-content: space-between; align-items: center; gap: 10px; list-style: none; cursor: default; }
+.perf-collapse-summary::-webkit-details-marker { display: none; }
+.perf-collapse-summary::marker, .perf-more-filters-summary::marker { content: ''; }
+.perf-page details.perf-collapsible .perf-collapse-summary > h3 { margin: 0 0 7px; }
+.perf-page details.perf-collapsible .perf-collapse-content > p { margin: 0; font-size: .79rem; line-height: 1.5; }
+.perf-page details.perf-collapsible .perf-collapse-content > .perf-priority { margin-top: 16px; }
+@media (max-width: 900px) and (min-width: 631px) {
+  .perf-page .perf-filters { grid-template-columns: 1fr; }
+}
+@media (max-width: 630px) {
+  /* Compact hierarchy, without sacrificing touch size or readable text. */
+  .perf-page { padding-bottom: 16px; }
+  .perf-page .perf-heading { display: grid; gap: 9px; margin-bottom: 8px; }
+  .perf-page .perf-heading h3 { font-size: 1.14rem; line-height: 1.25; }
+  .perf-page .perf-heading > div:first-child > p:not(.section-kicker) { font-size: .75rem; line-height: 1.4; }
+  .perf-page .perf-heading-actions { align-items: end; gap: 7px; flex-wrap: nowrap; }
+  .perf-page .perf-heading-actions label { flex: 1 1 auto; min-width: 0; font-size: .76rem; }
+  .perf-page .perf-heading-actions select { width: 100%; min-height: 40px; }
+  .perf-page #perfRefresh { min-height: 40px; padding: 0 9px; white-space: nowrap; font-size: .72rem; }
+  .perf-page .perf-info { margin: 9px 0 12px; padding: 10px 11px; font-size: .78rem; }
+  .perf-page .perf-loading { padding: 12px; font-size: .78rem; }
+  .perf-page .perf-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin: 10px 0 15px; }
+  .perf-page .perf-stat-card { border-radius: 11px; padding: 10px 11px; gap: 4px; min-height: 91px; }
+  .perf-page .perf-stat-card small { font-size: .69rem; line-height: 1.2; letter-spacing: .02em; }
+  .perf-page .perf-stat-card strong { font-size: 1.53rem; line-height: 1.1; }
+  .perf-page .perf-stat-card span { font-size: .72rem; line-height: 1.2; }
+  .perf-page > #perfContent > .perf-panel-heading { gap: 5px; margin: 8px 0; }
+  .perf-page .perf-panel-heading h3 { font-size: .98rem; }
+  .perf-page > #perfContent > .perf-panel-heading p { font-size: .75rem; line-height: 1.4; }
+  .perf-page #perfLastUpdated { font-size: .73rem; }
+  .perf-page .perf-section-grid { display: none; }
+  .perf-page .perf-mobile-section-picker { display: grid; gap: 5px; margin: 8px 0 12px; }
+  .perf-page .perf-mobile-section-picker label { color: #30465e; font-size: .75rem; font-weight: 750; }
+  .perf-page .perf-mobile-section-picker select { min-height: 42px; width: 100%; border: 1px solid #8295a9; border-radius: 10px; color: #1e314b; background: #fff; padding: 9px 10px; }
+  .perf-page .perf-detail-header { margin: 13px 0 7px; align-items: center; }
+  .perf-page .perf-detail-header h3 { font-size: 1rem; }
+  .perf-page .perf-detail-header .section-kicker { font-size: .66rem; }
+  .perf-page #perfAllSections { min-height: 36px; font-size: .73rem; }
+  .perf-page .perf-two-cols { gap: 8px; margin-bottom: 6px; }
+  .perf-page .perf-panel { padding: 12px; margin-bottom: 9px; border-radius: 12px; }
+  .perf-page .perf-collapse-summary { cursor: pointer; min-height: 28px; }
+  .perf-page details.perf-collapsible .perf-collapse-summary > h3 { margin: 0; font-size: .93rem; }
+  .perf-page .perf-collapse-indicator { display: block; width: 9px; height: 9px; margin-right: 5px; border-right: 2px solid #e3edf9; border-bottom: 2px solid #e3edf9; transform: rotate(45deg); transition: transform .15s ease; }
+  .perf-page details[open] > summary .perf-collapse-indicator { transform: rotate(225deg); }
+  .perf-page details.perf-collapsible[open] .perf-collapse-content { padding-top: 11px; }
+  .perf-page .perf-grade-chart { margin: 9px 0; }
+  .perf-page .perf-grade-row { grid-template-columns: 75px minmax(30px,1fr) 25px; gap: 6px; padding: 5px 3px; }
+  .perf-page .perf-trend-grid { margin: 8px 0; }
+  .perf-page .perf-trend-grid > div { padding: 9px 3px; gap: 4px; }
+  .perf-page .perf-trend-grid strong { font-size: 1.35rem; }
+  .perf-page .perf-trend-grid small { font-size: .72rem; }
+  .perf-page .perf-priority { max-height: 270px; margin-top: 9px; }
+  .perf-page .perf-priority-item { padding: 9px; gap: 7px; }
+  .perf-page .perf-priority-item strong { font-size: .79rem; }
+  .perf-page .perf-filters { grid-template-columns: minmax(0,1fr); gap: 7px; margin: 9px 0; }
+  .perf-page .perf-search-filter { width: 100%; }
+  .perf-page .perf-filters label { font-size: .74rem; }
+  .perf-page .perf-filters input, .perf-page .perf-filters select { min-height: 42px; }
+  .perf-page .perf-more-filters { border: 1px solid #55677c; border-radius: 8px; overflow: hidden; }
+  .perf-page .perf-more-filters-summary { display: flex; min-height: 40px; padding: 9px 11px; justify-content: space-between; align-items: center; color: #e4edf8; background: #2b3542; font-size: .78rem; font-weight: 760; cursor: pointer; }
+  .perf-page .perf-more-filters[open] .perf-more-filters-summary span { transform: rotate(180deg); }
+  .perf-page .perf-filter-options { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 10px; }
+  .perf-page .perf-table-wrap { display: none; }
+  .perf-page .perf-student-cards { display: grid; gap: 7px; }
+  .perf-page .perf-student-card { padding: 10px; border: 1px solid #495767; border-radius: 10px; background: #292f38; min-width: 0; }
+  .perf-page .perf-student-card-main { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; width: 100%; padding: 0; border: 0; background: transparent; color: #f5f8fc; }
+  .perf-page .perf-student-card-identity { display: grid; gap: 3px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+  .perf-page .perf-student-card-identity strong { font-size: .83rem; line-height: 1.3; }
+  .perf-page .perf-student-card-identity small { font-size: .7rem; color: #c7d3e1; line-height: 1.2; }
+  .perf-page .perf-student-card-grade { display: grid; text-align: right; justify-items: end; flex: 0 0 auto; max-width: 42%; gap: 4px; }
+  .perf-page .perf-student-card-grade small { font-size: .68rem; color: #cfdaea; }
+  .perf-page .perf-student-card-grade .perf-pill { font-size: .81rem; padding: 5px 10px; }
+  .perf-page .perf-mobile-grade-unavailable { font-size: .78rem; color: #e4eaf2; }
+  .perf-page .perf-student-card-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; justify-content: space-between; margin-top: 8px; font-size: .73rem; }
+  .perf-page .perf-movement { color: #c7d2df; }
+  .perf-page .perf-movement-improved { color: #7be0b5; }
+  .perf-page .perf-movement-declined, .perf-page .perf-requirements.has-lackings { color: #ffb1b5; }
+  .perf-page .perf-movement-unchanged { color: #e4e9f0; }
+  .perf-page .perf-requirements { color: #b4e3c8; font-weight: 720; }
+  .perf-page .perf-student-card-actions { margin-top: 8px; gap: 7px; }
+  .perf-page .perf-student-card-actions .mini-btn { flex: 1 1 0; min-height: 36px; font-size: .73rem; }
+  .perf-page .perf-mobile-empty { text-align: center; padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .perf-page .perf-collapse-indicator { transition: none; }
+}

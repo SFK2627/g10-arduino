@@ -124,6 +124,21 @@
     $("#perfRefresh").addEventListener("click", () => loadPerformanceDashboard(true));
     $("#perfTerm").addEventListener("change", () => loadPerformanceDashboard(true));
     $("#perfAllSections").addEventListener("click", () => selectPerformanceSection("*"));
+    $("#perfMobileSection").addEventListener("change", event => selectPerformanceSection(event.target.value));
+    // Compact screens show the essentials first; desktop keeps analytics expanded.
+    // This only resets panels when the viewport crosses the mobile breakpoint.
+    const compactPerformanceMedia = window.matchMedia("(max-width: 630px)");
+    const syncPerformancePanelMode = () => {
+      $$("#admin-page-performance details[data-perf-collapse]").forEach(panel => {
+        panel.open = !compactPerformanceMedia.matches;
+      });
+    };
+    syncPerformancePanelMode();
+    if (compactPerformanceMedia.addEventListener) {
+      compactPerformanceMedia.addEventListener("change", syncPerformancePanelMode);
+    } else if (compactPerformanceMedia.addListener) {
+      compactPerformanceMedia.addListener(syncPerformancePanelMode);
+    }
     ["#perfSearch", "#perfBand", "#perfTrend", "#perfRequirements"].forEach(selector => {
       $(selector).addEventListener(selector === "#perfSearch" ? "input" : "change", renderPerformanceStudentTable);
     });
@@ -3530,6 +3545,10 @@
       performanceStatCard("WITH LACKINGS", all.missing, "Published records only"),
       performanceStatCard(model.term === 1 ? "GRADE MOVEMENT" : `IMPROVED VS TERM ${model.term - 1}`, model.term === 1 ? "N/A" : all.improved, model.term === 1 ? "Select Term 2 or 3" : `${all.comparable} comparable • ${all.declined} declined • ${all.unchanged} unchanged`)
     ].join("");
+    const sectionPicker = $("#perfMobileSection");
+    sectionPicker.innerHTML = '<option value="*">All Sections</option>' + model.sections.map(item =>
+      `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("");
+    sectionPicker.value = performanceSelectedSection;
     $("#perfSections").innerHTML = model.sections.map(item => `
       <button type="button" class="perf-section-card ${item.name === performanceSelectedSection ? "is-active" : ""}"
         data-perf-section="${escapeHtml(item.name)}">
@@ -3620,6 +3639,36 @@
         <td><div class="perf-row-actions"><button class="mini-btn" data-perf-scores="${escapeHtml(r.uid)}" type="button">View Scores</button>
         <button class="mini-btn" data-perf-projects="${escapeHtml(r.uid)}" type="button">Projects</button></div></td></tr>`;
     }).join("") : '<tr><td colspan="5" class="perf-empty">No students match the selected filters.</td></tr>';
+
+    // Render equivalent, genuinely compact cards on phones instead of a
+    // horizontally scrolling five-column table. Both share the same filtered
+    // dataset, action handlers and Previous/Next navigation sequence.
+    $("#perfStudentCards").innerHTML = performanceDisplayedRows.length
+      ? performanceDisplayedRows.map(r => {
+          const gradeText = !r.published ? "Not published" : r.gradeIncomplete ? "INC" :
+            r.grade === null ? "Not available" : performanceGradeText(r.grade);
+          const gradeMarkup = r.grade === null ? `<span class="perf-mobile-grade-unavailable">${escapeHtml(gradeText)}</span>` :
+            performanceStatusPill(gradeText, `band-${r.band}`);
+          const trendLabel = r.trend === "unavailable" ? "No comparison" :
+            `${r.trend === "improved" ? "↑" : r.trend === "declined" ? "↓" : "→"} ${r.trend.charAt(0).toUpperCase() + r.trend.slice(1)}${r.delta === null ? "" : ` (${r.delta > 0 ? "+" : ""}${performanceGradeText(r.delta)})`}`;
+          const requirementsLabel = !r.published ? "Not published" : r.missing === null ? "Status unavailable" :
+            r.missing === 0 ? "Complete" : `${r.missing} lacking`;
+          return `<article class="perf-student-card">
+            <button type="button" class="perf-student-card-main" data-perf-scores="${escapeHtml(r.uid)}" aria-label="View scores for ${escapeHtml(r.fullName)}">
+              <span class="perf-student-card-identity"><strong>${escapeHtml(r.fullName)}</strong><small>${escapeHtml(r.studentId)} • ${escapeHtml(r.section)}</small></span>
+              <span class="perf-student-card-grade"><small>Running Grade</small>${gradeMarkup}</span>
+            </button>
+            <div class="perf-student-card-meta">
+              <span class="perf-movement perf-movement-${r.trend}" title="${escapeHtml(r.trendReason || trendLabel)}">${escapeHtml(trendLabel)}</span>
+              <span class="perf-requirements ${r.missing > 0 ? "has-lackings" : ""}">${escapeHtml(requirementsLabel)}</span>
+            </div>
+            <div class="perf-row-actions perf-student-card-actions">
+              <button class="mini-btn" data-perf-scores="${escapeHtml(r.uid)}" type="button">View Scores</button>
+              <button class="mini-btn" data-perf-projects="${escapeHtml(r.uid)}" type="button">Projects</button>
+            </div>
+          </article>`;
+        }).join("")
+      : '<p class="perf-muted perf-mobile-empty">No students match the selected filters.</p>';
   }
 
   async function openPerformanceProjectReviews(record) {
