@@ -41,6 +41,10 @@
   let studentComplianceOpenSerial = 0;
   let missingComplianceOverviewRows = [];
   let missingComplianceNavigationRows = [];
+  let performanceModel = null;
+  let performanceSelectedSection = "*";
+  let performanceDisplayedRows = [];
+  let performanceLoadSerial = 0;
 
   const DEFAULT_LOGIN_REMINDER_POSITIVE =
     "Great! You have no lacking requirements. Keep up the good work and continue maintaining your performance.";
@@ -117,6 +121,32 @@
     $("#cancelAnnouncementEditBtn").addEventListener("click", resetAnnouncementForm);
     $("#refreshAnnouncementsAdmin").addEventListener("click", loadAdminAnnouncements);
     $("#refreshAdminDashboard").addEventListener("click", loadAdminDashboardStats);
+    $("#perfRefresh").addEventListener("click", () => loadPerformanceDashboard(true));
+    $("#perfTerm").addEventListener("change", () => loadPerformanceDashboard(true));
+    $("#perfAllSections").addEventListener("click", () => selectPerformanceSection("*"));
+    ["#perfSearch", "#perfBand", "#perfTrend", "#perfRequirements"].forEach(selector => {
+      $(selector).addEventListener(selector === "#perfSearch" ? "input" : "change", renderPerformanceStudentTable);
+    });
+    $("#perfSections").addEventListener("click", e => {
+      const btn = e.target.closest("[data-perf-section]");
+      if (btn) selectPerformanceSection(btn.dataset.perfSection);
+    });
+    $("#perfGradeChart").addEventListener("click", e => {
+      const btn = e.target.closest("[data-perf-band]");
+      if (!btn) return;
+      $("#perfBand").value = $("#perfBand").value === btn.dataset.perfBand ? "*" : btn.dataset.perfBand;
+      renderPerformanceStudentTable();
+      $("#perfStudents").closest(".perf-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    $("#admin-page-performance").addEventListener("click", event => {
+      const scores = event.target.closest("[data-perf-scores]");
+      const projects = event.target.closest("[data-perf-projects]");
+      const uid = scores?.dataset.perfScores || projects?.dataset.perfProjects;
+      const record = performanceModel?.rows.find(r => r.uid === uid);
+      if (!record) return;
+      if (scores) void openStudentComplianceProfile(uid, Number($("#perfTerm").value), "performance");
+      if (projects) void openPerformanceProjectReviews(record);
+    });
     $("#missingComplianceCard").addEventListener("click", openMissingComplianceOverview);
     $("#studentComplianceTerm").addEventListener("change", loadActiveStudentComplianceProfile);
     $("#studentCompliancePreviousBtn").addEventListener("click", () => stepStudentCompliance(-1));
@@ -281,6 +311,10 @@
     $(`#admin-page-${page}`).classList.add("active");
 
     if (page === "overview") await loadAdminDashboardStats();
+    if (page === "performance") {
+      $("#perfTerm").value = String(currentAdminTerm());
+      await loadPerformanceDashboard(true);
+    }
     if (page === "announcements") await loadAdminAnnouncements();
     if (page === "lessons") await loadAdminLessons();
     if (page === "activities") await loadAdminActivities();
@@ -3393,6 +3427,202 @@
   }
 
 
+
+  // Admin-only analytics reads the SAME student-facing published documents that
+  // drive students' running grades. Never re-calculates grades from raw tasks.
+  async function loadPerformanceDashboard(force = false) {
+    const serial = ++performanceLoadSerial;
+    const term = Number($("#perfTerm").value || currentAdminTerm());
+    const message = $("#perfLoading");
+    message.classList.remove("hidden");
+    message.textContent = "Loading student roster and published Term " + term + " records…";
+    $("#perfRefresh").disabled = true;
+    if (force) $("#perfContent").classList.add("hidden");
+    try {
+      const rosterSnap = await db.collection("students").get();
+      if (serial !== performanceLoadSerial) return;
+      cachedStudentProfiles = rosterSnap.docs.map(d => ({ uid: d.id, ...d.data() }))
+        .sort((a,b) => String(a.fullName || "").localeCompare(String(b.fullName || "")));
+      const students = cachedStudentProfiles.filter(s => s.active !== false);
+      const duplicateIdCounts = new Map();
+      for (const student of students) {
+        const id = G10DataService.normalizeStudentId(student.studentId);
+        if (id) duplicateIdCounts.set(id, (duplicateIdCounts.get(id) || 0) + 1);
+      }
+      const snapshots = new Map();
+      for (let i = 0; i < students.length; i += 18) {
+        if (serial !== performanceLoadSerial) return;
+        const group = students.slice(i, i + 18);
+        const results = await Promise.all(group.map(async student => {
+          const id = G10DataService.normalizeStudentId(student.studentId);
+          if (!id || duplicateIdCounts.get(id) !== 1) return { uid: student.uid, current: null, first: null };
+          const ref = db.collection("studentCompliance").doc(id).collection("terms");
+          const [currentSnap, firstSnap] = await Promise.all([
+            ref.doc(`term${term}`).get(),
+            term === 1 ? Promise.resolve(null) : ref.doc("term1").get()
+          ]);
+          // Protect against stale/foreign records if a Student ID was reused.
+          const validData = snap => {
+            if (!snap?.exists) return null;
+            const data = snap.data() || {};
+            const storedUid = String(data.studentUid || "").trim();
+            return (!storedUid || storedUid === student.uid) ? data : null;
+          };
+          return { uid: student.uid, current: validData(currentSnap), first: validData(firstSnap) };
+        }));
+        if (serial !== performanceLoadSerial) return;
+        results.forEach(item => snapshots.set(item.uid, item));
+        message.textContent = `Reading published grades… ${Math.min(i + 18, students.length)} of ${students.length} students`;
+      }
+      if (serial !== performanceLoadSerial) return;
+      performanceModel = G10PerformanceAnalytics.build(students, snapshots, term);
+      const timestamp = new Date();
+      $("#perfLastUpdated").textContent = `Refreshed ${timestamp.toLocaleString()}`;
+      message.classList.add("hidden");
+      $("#perfContent").classList.remove("hidden");
+      if (performanceSelectedSection !== "*" &&
+          !performanceModel.sections.some(s => s.name === performanceSelectedSection)) performanceSelectedSection = "*";
+      renderPerformanceDashboard();
+    } catch (error) {
+      if (serial !== performanceLoadSerial) return;
+      // Do not show partial/misleading statistics on permission/network errors.
+      performanceModel = null;
+      $("#perfContent").classList.add("hidden");
+      message.textContent = `Unable to load complete published data: ${error?.message || "Unknown error"}. Refresh to retry. No counts were calculated from partial data.`;
+    } finally {
+      if (serial === performanceLoadSerial) $("#perfRefresh").disabled = false;
+    }
+  }
+
+  function performanceGradeText(value) {
+    return value === null || value === undefined ? "—" : String(Math.round(value * 100) / 100);
+  }
+
+  function performanceStatusPill(label, type = "neutral") {
+    return `<span class="perf-pill perf-pill-${escapeHtml(type)}">${escapeHtml(label)}</span>`;
+  }
+
+  function performanceStatCard(title, value, subtitle) {
+    return `<article class="perf-stat-card"><small>${escapeHtml(title)}</small><strong>${escapeHtml(value)}</strong><span>${escapeHtml(subtitle)}</span></article>`;
+  }
+
+  function selectPerformanceSection(section) {
+    performanceSelectedSection = section;
+    $("#perfBand").value = "*";
+    $("#perfTrend").value = "*";
+    $("#perfRequirements").value = "*";
+    $("#perfSearch").value = "";
+    renderPerformanceDashboard();
+  }
+
+  function renderPerformanceDashboard() {
+    if (!performanceModel) return;
+    const model = performanceModel;
+    const all = model.stats;
+    $("#perfTopStats").innerHTML = [
+      performanceStatCard("TOTAL STUDENTS", all.total, `${model.sections.length} sections`),
+      performanceStatCard("PUBLISHED RECORDS", all.published, `${all.total ? (100 * all.published / all.total).toFixed(1) : "0"}% coverage • ${all.notPublished} not published`),
+      performanceStatCard("WITH LACKINGS", all.missing, "Published records only"),
+      performanceStatCard("IMPROVED VS TERM 1", model.term === 1 ? "N/A" : all.improved, model.term === 1 ? "Select Term 2 or 3" : `${all.comparable} with comparable grades`)
+    ].join("");
+    $("#perfSections").innerHTML = model.sections.map(item => `
+      <button type="button" class="perf-section-card ${item.name === performanceSelectedSection ? "is-active" : ""}"
+        data-perf-section="${escapeHtml(item.name)}">
+        <strong>${escapeHtml(item.name)}</strong>
+        <span>${item.stats.total} students • ${item.stats.published} published</span>
+        <small>${item.stats.missing} with lackings • ${item.stats.notPublished} not published</small>
+      </button>`).join("");
+    $("#perfSectionTitle").textContent = performanceSelectedSection === "*" ? "All Sections" : performanceSelectedSection;
+    const selected = performanceSelectedSection === "*" ? { rows: model.rows, stats: all } :
+      model.sections.find(item => item.name === performanceSelectedSection) || { rows: [], stats: G10PerformanceAnalytics.summary([]) };
+    const stats = selected.stats;
+    $("#perfSectionStats").innerHTML = [
+      performanceStatCard("AVERAGE RUNNING GRADE", performanceGradeText(stats.average), `${stats.graded} numeric grades`),
+      performanceStatCard("NO LACKINGS", stats.complete, "Published with known completion"),
+      performanceStatCard("WITH LACKINGS", stats.missing, "Published with missing tasks"),
+      performanceStatCard("NOT YET PUBLISHED", stats.notPublished, `${stats.noGrade} published without numeric grade`)
+    ].join("");
+    const highest = Math.max(1, ...Object.values(stats.distribution));
+    $("#perfGradeChart").innerHTML = G10PerformanceAnalytics.BANDS.map(item => {
+      const count = stats.distribution[item.key];
+      return `<button type="button" class="perf-grade-row" data-perf-band="${item.key}"
+        aria-label="Filter ${escapeHtml(item.label)} grade band, ${count} students">
+        <span class="perf-grade-label"><i class="perf-swatch perf-swatch-${item.key}"></i>${escapeHtml(item.label)}</span>
+        <span class="perf-grade-bar"><i class="perf-grade-fill perf-fill-${item.key}" style="width:${(100*count/highest).toFixed(1)}%"></i></span>
+        <strong>${count}</strong></button>`;
+    }).join("");
+    $("#perfGradeNote").textContent = `${stats.graded} numeric grades included • ${stats.noGrade} published without numeric grade`;
+    $("#perfTrends").innerHTML = model.term === 1
+      ? '<p class="perf-muted">Term 1 is the baseline. Select Term 2 or Term 3 to see grade movement.</p>'
+      : `<div class="perf-trend-grid">${[
+        ["Improved", stats.improved, "improved"],
+        ["Declined", stats.declined, "declined"],
+        ["Unchanged", stats.unchanged, "unchanged"]
+      ].map(([label, count, type]) => `<div class="perf-trend-${type}"><strong>${count}</strong><small>${label}</small></div>`).join("")}</div>`;
+    $("#perfTrendNote").textContent = model.term === 1 ? "No comparisons for the first term." :
+      `${stats.comparable} students with both valid grades; others are not compared.`;
+    const priority = selected.rows.filter(r => r.priority).sort((a,b) =>
+      Number(b.trend === "declined") - Number(a.trend === "declined") || (b.missing || 0) - (a.missing || 0) || (a.grade ?? 101) - (b.grade ?? 101));
+    $("#perfPriority").innerHTML = priority.length ? priority.map(r => `
+      <button class="perf-priority-item" type="button" data-perf-scores="${escapeHtml(r.uid)}">
+        <span><strong>${escapeHtml(r.fullName)}</strong><small>${escapeHtml(r.section)} • ${escapeHtml(r.studentId)}</small></span>
+        <span>${r.trend === "declined" ? performanceStatusPill("Declined", "declined") : ""}
+          ${r.missing >= 2 ? performanceStatusPill(`${r.missing} lacking`, "missing") : ""}
+          ${r.grade !== null && r.grade < 75 ? performanceStatusPill("Below 75", "missing") : ""}</span>
+      </button>`).join("") : '<p class="perf-muted">No priority students based on the published records in this selection.</p>';
+    renderPerformanceStudentTable();
+  }
+
+  function performanceFiltered() {
+    if (!performanceModel) return [];
+    const band = $("#perfBand").value;
+    const trend = $("#perfTrend").value;
+    const requirement = $("#perfRequirements").value;
+    const query = $("#perfSearch").value.toLowerCase().trim();
+    return performanceModel.rows.filter(r =>
+      (performanceSelectedSection === "*" || r.section === performanceSelectedSection) &&
+      (band === "*" || r.band === band) && (trend === "*" || r.trend === trend) &&
+      (requirement === "*" || (requirement === "missing" && r.published && r.missing > 0) ||
+        (requirement === "complete" && r.published && r.missing === 0) ||
+        (requirement === "unpublished" && !r.published) ||
+        (requirement === "nograde" && r.published && r.grade === null)) &&
+      (!query || `${r.fullName} ${r.studentId} ${r.section}`.toLowerCase().includes(query))
+    );
+  }
+
+  function renderPerformanceStudentTable() {
+    if (!performanceModel) return;
+    performanceDisplayedRows = performanceFiltered();
+    const sectionTotal = performanceSelectedSection === "*" ? performanceModel.rows.length :
+      performanceModel.rows.filter(r => r.section === performanceSelectedSection).length;
+    $("#perfVisibleCount").textContent = `${performanceDisplayedRows.length} of ${sectionTotal} students`;
+    const table = $("#perfStudents");
+    table.innerHTML = performanceDisplayedRows.length ? performanceDisplayedRows.map(r => {
+      const gradeText = !r.published ? 'Not published' : r.gradeIncomplete ? 'INC' :
+        r.grade === null ? 'Not available' : performanceGradeText(r.grade);
+      const gradeLabel = r.grade === null ? escapeHtml(gradeText) :
+        `${performanceStatusPill(gradeText, `band-${r.band}`)}`;
+      const trendText = r.trend === "unavailable" ? (performanceModel.term === 1 ? 'Baseline' : 'N/A') :
+        `${r.delta > 0 ? '+' : ''}${performanceGradeText(r.delta)} (${r.trend})`;
+      const missingText = !r.published ? 'Not published' : r.missing === null ? 'Status unavailable' :
+        r.missing === 0 ? 'Complete' : `${r.missing} lacking`;
+      return `<tr><td><strong>${escapeHtml(r.fullName)}</strong><small>${escapeHtml(r.studentId)} • ${escapeHtml(r.section)}</small></td>
+        <td>${gradeLabel}</td><td>${escapeHtml(trendText)}</td><td>${escapeHtml(missingText)}</td>
+        <td><div class="perf-row-actions"><button class="mini-btn" data-perf-scores="${escapeHtml(r.uid)}" type="button">View Scores</button>
+        <button class="mini-btn" data-perf-projects="${escapeHtml(r.uid)}" type="button">Projects</button></div></td></tr>`;
+    }).join("") : '<tr><td colspan="5" class="perf-empty">No students match the selected filters.</td></tr>';
+  }
+
+  async function openPerformanceProjectReviews(record) {
+    const term = $("#perfTerm").value;
+    await openAdminPage("project-monitor");
+    $("#pmTermFilter").value = term;
+    const options = Array.from($("#pmSectionFilter").options).map(o => o.value);
+    $("#pmSectionFilter").value = options.includes(record.section) ? record.section : "*";
+    $("#pmStudentSearch").value = record.studentId || record.fullName;
+    renderProjectTaskOptions();
+  }
+
   function currentAdminTerm() {
     return Number($("#settingCurrentTerm")?.value || 1);
   }
@@ -3559,7 +3789,9 @@
   function studentComplianceQueue(source, selectedUid) {
     const list = source === "missing"
       ? missingComplianceNavigationRows
-      : filteredStudentProfiles();
+      : source === "performance"
+        ? performanceDisplayedRows
+        : filteredStudentProfiles();
     const ids = list.map(student => student.uid).filter(Boolean);
     // A modal opened outside the Students tab may not be included in that tab's
     // filters. In that case show this student without silently switching lists.
@@ -3579,6 +3811,8 @@
     $("#studentComplianceNavigationContext").textContent =
       studentComplianceNavigationSource === "missing"
         ? "Missing requirements list"
+        : studentComplianceNavigationSource === "performance"
+          ? "Section Performance • filtered students"
         : ($("#studentSectionFilter")?.value || "*") === "*"
           ? "Filtered students / All sections"
           : ($("#studentSectionFilter")?.selectedOptions?.[0]?.textContent || "Section");

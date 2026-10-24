@@ -1,17 +1,18 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v33-music-shuffle";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v34-g10-performance";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=33-music-shuffle",
+  "./styles.css?v=34-g10-performance",
   "./firebase-config.js",
-  "./demo-data.js?v=33-music-shuffle",
-  "./data-service.js?v=33-music-shuffle",
-  "./music-playlist.js?v=33-music-shuffle",
-  "./app.js?v=33-music-shuffle",
-  "./admin.js?v=33-music-shuffle",
-  "./pwa.js?v=33-music-shuffle",
+  "./demo-data.js?v=34-g10-performance",
+  "./data-service.js?v=34-g10-performance",
+  "./music-playlist.js?v=34-g10-performance",
+  "./app.js?v=34-g10-performance",
+  "./performance-analytics.js?v=34-g10-performance",
+  "./admin.js?v=34-g10-performance",
+  "./pwa.js?v=34-g10-performance",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

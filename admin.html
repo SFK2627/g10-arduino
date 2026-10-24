@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#121316">
   <title>Admin • MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css?v=33-music-shuffle">
+  <link rel="stylesheet" href="styles.css?v=34-g10-performance">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -21,11 +21,12 @@
   <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js?v=33-music-shuffle"></script>
-  <script defer src="data-service.js?v=33-music-shuffle"></script>
-  <script defer src="music-playlist.js?v=33-music-shuffle"></script>
-  <script defer src="admin.js?v=33-music-shuffle"></script>
-  <script defer src="pwa.js?v=33-music-shuffle"></script>
+  <script defer src="demo-data.js?v=34-g10-performance"></script>
+  <script defer src="data-service.js?v=34-g10-performance"></script>
+  <script defer src="music-playlist.js?v=34-g10-performance"></script>
+  <script defer src="performance-analytics.js?v=34-g10-performance"></script>
+  <script defer src="admin.js?v=34-g10-performance"></script>
+  <script defer src="pwa.js?v=34-g10-performance"></script>
 </head>
 <body>
   <section id="adminLoginView" class="admin-login">
@@ -100,6 +101,7 @@
         <button class="admin-tab" data-admin-page="announcements">Announcements</button>
         <button class="admin-tab" data-admin-page="lessons">Lessons</button>
         <button class="admin-tab" data-admin-page="activities">Activities</button>
+        <button class="admin-tab" data-admin-page="performance">Section Performance</button>
         <button class="admin-tab" data-admin-page="students">Students</button>
         <button class="admin-tab" data-admin-page="tinkercad">Tinkercad Classroom</button>
         <button class="admin-tab" data-admin-page="project-monitor">Project Monitoring</button>
@@ -245,6 +247,61 @@
           </form>
           <div id="settingsStatus" class="admin-status"></div>
         </article>
+      </section>
+
+
+      <!-- Admin-only analytics: read published Firebase compliance snapshots, no writes. -->
+      <section id="admin-page-performance" class="admin-page perf-page">
+        <div class="admin-dashboard-head perf-heading">
+          <div>
+            <p class="section-kicker">GRADE 10 • ADMIN ANALYTICS</p>
+            <h3>Section Performance Overview</h3>
+            <p>Real published compliance snapshots • Only numeric running grades count toward averages.</p>
+          </div>
+          <div class="perf-heading-actions">
+            <label><span>Term</span><select id="perfTerm"><option value="1">Term 1</option><option value="2">Term 2</option><option value="3">Term 3</option></select></label>
+            <button type="button" class="mini-btn" id="perfRefresh">Refresh Performance</button>
+          </div>
+        </div>
+        <p class="perf-info">Running grades are not final and may increase or decrease before the end of the term. Grade movements compare with Term 1 only when both grades are numeric.</p>
+        <div id="perfLoading" class="perf-loading" role="status" aria-live="polite">Open this tab to load published data.</div>
+        <div id="perfContent" class="hidden">
+          <div class="perf-stat-grid" id="perfTopStats"></div>
+          <div class="perf-panel-heading"><div><h3>Select a Section</h3><p>Choose a section to explore students' academic standing.</p></div><span id="perfLastUpdated" class="perf-updated"></span></div>
+          <div id="perfSections" class="perf-section-grid"></div>
+          <div class="perf-detail-header">
+            <div><p class="section-kicker">SELECTED SECTION</p><h3 id="perfSectionTitle">All Sections</h3></div>
+            <button class="mini-btn" id="perfAllSections" type="button">All Sections</button>
+          </div>
+          <div id="perfSectionStats" class="perf-stat-grid"></div>
+          <div class="perf-two-cols">
+            <article class="panel perf-panel">
+              <h3>Grade Distribution</h3><p>Click a band to filter students. Grade bands are for running grades, not WW/PT task percentages.</p>
+              <div id="perfGradeChart" class="perf-grade-chart"></div>
+              <small id="perfGradeNote" class="perf-muted"></small>
+            </article>
+            <article class="panel perf-panel">
+              <h3>Grade Movement vs Term 1</h3><p>Compared students must have numeric published grades in both terms.</p>
+              <div id="perfTrends" class="perf-trends"></div>
+              <small id="perfTrendNote" class="perf-muted"></small>
+            </article>
+          </div>
+          <article class="panel perf-panel">
+            <div class="perf-panel-heading"><div><h3>Priority Students</h3><p>Grade declined, at least 2 lackings, or running grade below 75. Click to view scores.</p></div></div>
+            <div id="perfPriority" class="perf-priority"></div>
+          </article>
+          <article class="panel perf-panel">
+            <div class="perf-panel-heading"><div><h3>Explore Student Details</h3><p>Grades, trends and missing requirements from published records only.</p></div><small id="perfVisibleCount"></small></div>
+            <div class="perf-filters">
+              <label><span>Search</span><input id="perfSearch" type="search" placeholder="Student name or ID"></label>
+              <label><span>Grade band</span><select id="perfBand"><option value="*">All grade bands</option><option value="white">White (96–100)</option><option value="green">Green (91–95)</option><option value="yellow">Yellow (86–90)</option><option value="gray">Gray (81–85)</option><option value="orange">Orange (75–80)</option><option value="red">Red (below 75)</option><option value="unavailable">No numeric grade</option></select></label>
+              <label><span>Movement</span><select id="perfTrend"><option value="*">Any movement</option><option value="improved">Improved</option><option value="declined">Declined</option><option value="unchanged">Unchanged</option><option value="unavailable">Not comparable</option></select></label>
+              <label><span>Requirements</span><select id="perfRequirements"><option value="*">All records</option><option value="missing">With lackings</option><option value="complete">No lackings</option><option value="unpublished">Not published</option><option value="nograde">Published, no numeric grade</option></select></label>
+            </div>
+            <p class="perf-table-mobile-tip">On smaller screens, swipe the student table sideways to see actions.</p>
+            <div class="perf-table-wrap"><table class="perf-students-table"><thead><tr><th>Student</th><th>Running Grade</th><th>vs Term 1</th><th>Requirements</th><th>Actions</th></tr></thead><tbody id="perfStudents"></tbody></table></div>
+          </article>
+        </div>
       </section>
 
       <section id="admin-page-announcements" class="admin-page">
