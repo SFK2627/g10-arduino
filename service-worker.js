@@ -1,18 +1,19 @@
-const CACHE_NAME = "mcsian-ict10-portal-shell-v35-grade-movement";
+const CACHE_NAME = "mcsian-ict10-portal-shell-v36-student-arrows";
 
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./admin.html",
-  "./styles.css?v=35-grade-movement",
+  "./styles.css?v=36-student-arrows",
   "./firebase-config.js",
-  "./demo-data.js?v=35-grade-movement",
-  "./data-service.js?v=35-grade-movement",
-  "./music-playlist.js?v=35-grade-movement",
-  "./app.js?v=35-grade-movement",
-  "./performance-analytics.js?v=35-grade-movement",
-  "./admin.js?v=35-grade-movement",
-  "./pwa.js?v=35-grade-movement",
+  "./demo-data.js?v=36-student-arrows",
+  "./data-service.js?v=36-student-arrows",
+  "./grade-trend.js?v=36-student-arrows",
+  "./music-playlist.js?v=36-student-arrows",
+  "./app.js?v=36-student-arrows",
+  "./performance-analytics.js?v=36-student-arrows",
+  "./admin.js?v=36-student-arrows",
+  "./pwa.js?v=36-student-arrows",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

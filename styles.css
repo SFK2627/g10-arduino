@@ -8020,3 +8020,35 @@ button {
 
 .perf-table-mobile-tip { display: none; font-size: .74rem; color: #bdc9d7; margin: -5px 0 9px; }
 @media(max-width:700px) { .perf-table-mobile-tip { display: block; } }
+
+/* v36 — Student running grade movement, next to numeric grade */
+.grade-card-value-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+.grade-card-value-line .grade-card-number { flex: 0 0 auto; }
+.grade-trend-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.28);
+  padding: 6px 10px;
+  font-size: .72rem;
+  font-weight: 850;
+  line-height: 1.1;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.grade-trend-pill.hidden { display: none !important; }
+.grade-trend-pill.improved { background: rgba(43, 172, 109, .21); border-color: rgba(110, 238, 175, .4); color: #a7ffd0; }
+.grade-trend-pill.declined { background: rgba(239, 80, 97, .21); border-color: rgba(255, 151, 155, .4); color: #ffb5bb; }
+.grade-trend-pill.unavailable { background: rgba(173, 183, 199, .12); border-color: rgba(223, 232, 244, .24); color: #ced6e4; }
+.grade-trend-pill.unchanged { background: rgba(173, 183, 199, .16); border-color: rgba(223, 232, 244, .3); color: #e1e6ef; }
+@media (max-width: 430px) {
+  .grade-card-value-line { gap: 8px; }
+  .grade-trend-pill { font-size: .63rem; padding: 5px 8px; }
+}

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#b20f1b">
   <title>MCSian ICT 10 Portal</title>
-  <link rel="stylesheet" href="styles.css?v=35-grade-movement">
+  <link rel="stylesheet" href="styles.css?v=36-student-arrows">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="mobile-web-app-capable" content="yes">
@@ -22,11 +22,12 @@
   <script defer src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 
   <script defer src="firebase-config.js"></script>
-  <script defer src="demo-data.js?v=35-grade-movement"></script>
-  <script defer src="data-service.js?v=35-grade-movement"></script>
-  <script defer src="music-playlist.js?v=35-grade-movement"></script>
-  <script defer src="app.js?v=35-grade-movement"></script>
-  <script defer src="pwa.js?v=35-grade-movement"></script>
+  <script defer src="demo-data.js?v=36-student-arrows"></script>
+  <script defer src="data-service.js?v=36-student-arrows"></script>
+  <script defer src="grade-trend.js?v=36-student-arrows"></script>
+  <script defer src="music-playlist.js?v=36-student-arrows"></script>
+  <script defer src="app.js?v=36-student-arrows"></script>
+  <script defer src="pwa.js?v=36-student-arrows"></script>
 </head>
 <body>
   <noscript>
@@ -169,7 +170,10 @@
         <article class="student-running-grade dashboard-grade" aria-label="Your running grade">
           <div class="student-running-grade-copy">
             <span class="grade-card-kicker" id="dashboardGradeLabel">RUNNING GRADE</span>
-            <strong class="grade-card-number" id="dashboardGradeValue">—</strong>
+            <span class="grade-card-value-line">
+              <strong class="grade-card-number" id="dashboardGradeValue">—</strong>
+              <span class="grade-trend-pill hidden" id="dashboardGradeTrend" role="status" aria-live="polite"></span>
+            </span>
             <small id="dashboardGradeNote">Loading your latest running grade…</small>
             <p class="grade-card-disclaimer">This is your current running grade, not your final term grade. It may increase or decrease before the term ends.</p>
           </div>
@@ -311,7 +315,10 @@
         <article class="student-running-grade compliance-grade" aria-label="Your running grade">
           <div class="student-running-grade-copy">
             <span class="grade-card-kicker" id="complianceGradeLabel">RUNNING GRADE</span>
-            <strong class="grade-card-number" id="complianceGradeValue">—</strong>
+            <span class="grade-card-value-line">
+              <strong class="grade-card-number" id="complianceGradeValue">—</strong>
+              <span class="grade-trend-pill hidden" id="complianceGradeTrend" role="status" aria-live="polite"></span>
+            </span>
             <small id="complianceGradeNote">Loading your latest running grade…</small>
             <p class="grade-card-disclaimer">This is your current running grade, not your final term grade. It may increase or decrease before the term ends.</p>
           </div>
@@ -407,7 +414,10 @@
         <section class="student-running-grade login-reminder-grade" aria-label="Your running grade">
           <div class="student-running-grade-copy">
             <span class="grade-card-kicker" id="studentReminderGradeLabel">RUNNING GRADE</span>
-            <strong class="grade-card-number" id="studentReminderGradeValue">—</strong>
+            <span class="grade-card-value-line">
+              <strong class="grade-card-number" id="studentReminderGradeValue">—</strong>
+              <span class="grade-trend-pill hidden" id="studentReminderGradeTrend" role="status" aria-live="polite"></span>
+            </span>
             <small id="studentReminderGradeNote">Loading your latest running grade…</small>
             <p class="grade-card-disclaimer">This is your current running grade, not your final term grade. It may increase or decrease before the term ends.</p>
           </div>

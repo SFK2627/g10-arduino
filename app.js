@@ -1377,6 +1377,28 @@
     $(`#${prefix}Label`).textContent = grade.label;
     $(`#${prefix}Value`).textContent = grade.value;
     $(`#${prefix}Note`).textContent = grade.note;
+
+    const pill = $(`#${prefix}Trend`);
+    if (pill) {
+      const trend = loadError ? null : G10GradeTrend.forDisplay(record, currentTerm);
+      pill.classList.remove("improved", "declined", "unchanged", "unavailable");
+      const options = {
+        improved: { symbol: "↑", label: "Improved" },
+        declined: { symbol: "↓", label: "Declined" },
+        unchanged: { symbol: "→", label: "Unchanged" },
+        unavailable: { symbol: "—", label: "No comparison" }
+      };
+      const detail = trend ? options[trend] : null;
+      pill.classList.toggle("hidden", !detail);
+      pill.textContent = detail ? `${detail.symbol} ${detail.label}` : "";
+      pill.title = detail ? (trend === "unavailable"
+        ? `No valid Term ${currentTerm - 1} grade is available for comparison`
+        : `${detail.label} compared with Term ${currentTerm - 1}`) : "";
+      pill.setAttribute("aria-label", detail ? (trend === "unavailable"
+        ? `No valid Term ${currentTerm - 1} grade for comparison`
+        : `${detail.label} since Term ${currentTerm - 1}`) : "No previous-term comparison");
+      if (detail) pill.classList.add(trend);
+    }
   }
 
   async function refreshDashboardRunningGrade(force = false) {

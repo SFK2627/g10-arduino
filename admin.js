@@ -5235,8 +5235,15 @@
             publishedBy: admin.email || admin.uid || "teacher"
           };
 
+          // Students see only an up/down/unchanged indicator for their own grade.
+          // The previous numeric grade remains in adminCompliance only.
+          const gradeMovement = G10GradeTrend.fromSheetRow(
+            row, Number(payload.term), Boolean(sectionPayload.previousTermAvailable)
+          );
+
           batch.set(studentRef, {
             ...commonSnapshot,
+            gradeMovement,
             tasks: studentTasks,
             source: "e-class-record",
             complianceSchemaVersion: 7
